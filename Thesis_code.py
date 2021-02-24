@@ -10,7 +10,10 @@ import pandas as pd
 from folium import Map, Marker, GeoJson
 import json
 from geojson.feature import *
-
+from felyx_gcp_utils.get_gcp_secrets import access_secret_version
+from sqlalchemy import create_engine
+import os
+import psycopg2
 #Determine granularity of service areas
 max_res=15
 list_hex_edge_km = []
@@ -97,3 +100,9 @@ GeoJson(
     ).add_to(map_example)
 
 map_example.save('1_resolutions.html')
+
+#load data from sql database
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="C:/Users/Martijn Oerlemans/Desktop/felyx-ai-machine-learning-88e8adf81f5b.json"
+cnx = create_engine(access_secret_version('felyx-ai-machine-learning','DATABASE_URL_DATAWAREHOUSE', "latest"))
+
+test = pd.read_sql_query('''SELECT * FROM vehicle limit 5;''',cnx)
