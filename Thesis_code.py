@@ -105,4 +105,55 @@ map_example.save('1_resolutions.html')
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="C:/Users/Martijn Oerlemans/Desktop/felyx-ai-machine-learning-88e8adf81f5b.json"
 cnx = create_engine(access_secret_version('felyx-ai-machine-learning','DATABASE_URL_DATAWAREHOUSE', "latest"))
 
-test = pd.read_sql_query('''SELECT * FROM vehicle limit 5;''',cnx)
+
+#Data regarding weather, filter out some columns
+weather_record_ams = pd.read_sql_query('''SELECT * 
+                                       FROM weather_record
+                                       WHERE location_id = 1''',cnx)
+#data regarding reservations, add columns needed
+reservation_ams = pd.read_sql_query('''SELECT *
+                                       FROM reservation
+                                       WHERE location_id = 1
+                                       LIMIT 1000;''',cnx)
+        
+uni_hbo_dwh = pd.read_sql_query('''SELECT *
+                                FROM uni_hbo_dwh''',cnx)
+uni_hbo_dwh_ams = pd.read_sql_query('''SELECT *
+                                       FROM uni_hbo_dwh
+                                       WHERE location_id = 1
+                                       LIMIT 1000;''',cnx)
+treinstations_dwh_ams = pd.read_sql_query('''SELECT *
+                                       FROM trainstations_dwh
+                                       WHERE location_id = 1
+                                       LIMIT 1000;''',cnx)
+
+full_data_ams = pd.read_sql_query('''SELECT a.*, b.*
+                                  FROM reservation as a
+                                  INNER JOIN weather_record  as b
+                                  ON a.location_id = b.location_id
+                                  AND a.location_id =1 -- Amsterdam
+                                  AND DATE_TRUNC('day', a.reservation_start_time) = DATE_TRUNC('day', b.date)
+                                  AND DATE_PART('hour', a.reservation_start_time) = b.hour
+                                  AND a.rent_start_successful
+                                  AND NOT a.dev_account
+                                  AND (a.rent_end_successful OR a.net_price > 0)
+                                  AND a.reservation_end_time < '2021-03-04' ''',cnx)
+#resolution wanted
+service_area_resolution = 9
+#converting long,lat columns to hexagons
+full_data_ams['start_hexagon'] = full_data_ams.apply(lambda row: 
+                                    h3.geo_to_h3(lat=row['start_latitude'],
+                                    lng=row['start_longitude'], 
+                                    resolution=service_area_resolution), axis=1)
+
+full_data_ams['end_hexagon'] = full_data_ams.apply(lambda row: 
+                                    h3.geo_to_h3(lat=row['end_latitude'],
+                                    lng=row['end_longitude'], 
+                                    resolution=service_area_resolution), axis=1)
+    
+full_data_ams_100= full_data_ams.head(100)
+#save data to excel file
+#full_data_ams.to_excel("full_data_ams.xlsx")
+#1832138
+unique_hexagons_ams_start = full_data_ams.start_hexagon.unique()
+unique_hexagons_ams_end = full_data_ams.end_hexagon.unique()
