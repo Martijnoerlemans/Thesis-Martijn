@@ -4,6 +4,7 @@ Created on Fri Feb 19 16:32:42 2021
 
 @author: Martijn Oerlemans
 """
+import math
 
 from h3 import h3
 import pandas as pd
@@ -118,11 +119,19 @@ reservation_ams = pd.read_sql_query('''SELECT *
                                        LIMIT 1000;''',cnx)
         
 
-full_data_ams = pd.read_sql_query('''SELECT a.*, b.*
+full_data_ams = pd.read_sql_query('''SELECT a.vehicle_id, a.location_id,
+                                  a.reservation_start_time, a.reservation_end_time,
+                                  a.start_latitude,a.start_longitude,
+                                  a.end_latitude, a.end_longitude,
+                                  b.date, b.feels_like_temp, b.snow_level,
+                                  b.sun_hours, b.uv_index, b.wind_speed,
+                                  b.precipitation, b.humidity, b.visibility,
+                                  b.heat_index, b.hour
                                   FROM reservation as a
                                   INNER JOIN weather_record  as b
                                   ON a.location_id = b.location_id
-                                  AND a.location_id =1 -- Amsterdam
+                                  AND a.location_id =1
+                                  AND a.location_id_start = 1
                                   AND DATE_TRUNC('day', a.reservation_start_time) = DATE_TRUNC('day', b.date)
                                   AND DATE_PART('hour', a.reservation_start_time) = b.hour
                                   AND a.rent_start_successful
@@ -135,7 +144,7 @@ trainstations_dwh_ams = trainstations_dwh[trainstations_dwh['location_id']==1]
 uni_hbo_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/uni_hbo_dwh.xlsx')
 uni_hbo_dwh_ams = uni_hbo_dwh[uni_hbo_dwh['location_id']==1]
 
-
+full_data_ams = full_data_ams[full_data_ams['location_id_start']==1]
 #resolution wanted
 service_area_resolution = 9
 #converting long,lat columns to hexagons
@@ -168,7 +177,7 @@ random_hexagon ='89196953157ffff'
 # function to get boundaries of a hexagon in latitudes and longitudes
 h3.h3_to_geo_boundary(random_hexagon)
 
-def visualize_hexagons(hexagons, color="green", folium_map=None):
+def visualize_hexagons(hexagons, color, folium_map=None):
     """
     hexagons is a list of hexcluster. Each hexcluster is a list of hexagons. 
     eg. [[hex1, hex2], [hex3, hex4]]
@@ -194,6 +203,20 @@ def visualize_hexagons(hexagons, color="green", folium_map=None):
         m.add_child(my_PolyLine)
     return m
 
-m = visualize_hexagons(unique_hexagons_ams_start)
+m = visualize_hexagons(unique_hexagons_ams_start,'purple')
 display(m)
 m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\index.html")
+
+def haversine(coord1, coord2):
+    R = 6372800  # Earth radius in meters
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    
+    phi1, phi2 = math.radians(lat1), math.radians(lat2) 
+    dphi       = math.radians(lat2 - lat1)
+    dlambda    = math.radians(lon2 - lon1)
+    
+    a = math.sin(dphi/2)**2 + \
+        math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    
+    return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
