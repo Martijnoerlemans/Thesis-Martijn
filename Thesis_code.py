@@ -7,6 +7,7 @@ Created on Fri Feb 19 16:32:42 2021
 
 from h3 import h3
 import pandas as pd
+import folium
 from folium import Map, Marker, GeoJson
 import json
 from geojson.feature import *
@@ -116,16 +117,6 @@ reservation_ams = pd.read_sql_query('''SELECT *
                                        WHERE location_id = 1
                                        LIMIT 1000;''',cnx)
         
-uni_hbo_dwh = pd.read_sql_query('''SELECT *
-                                FROM uni_hbo_dwh''',cnx)
-uni_hbo_dwh_ams = pd.read_sql_query('''SELECT *
-                                       FROM uni_hbo_dwh
-                                       WHERE location_id = 1
-                                       LIMIT 1000;''',cnx)
-treinstations_dwh_ams = pd.read_sql_query('''SELECT *
-                                       FROM trainstations_dwh
-                                       WHERE location_id = 1
-                                       LIMIT 1000;''',cnx)
 
 full_data_ams = pd.read_sql_query('''SELECT a.*, b.*
                                   FROM reservation as a
@@ -138,6 +129,13 @@ full_data_ams = pd.read_sql_query('''SELECT a.*, b.*
                                   AND NOT a.dev_account
                                   AND (a.rent_end_successful OR a.net_price > 0)
                                   AND a.reservation_end_time < '2021-03-04' ''',cnx)
+
+trainstations_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/trainstations_dwh.xlsx')
+trainstations_dwh_ams = trainstations_dwh[trainstations_dwh['location_id']==1]
+uni_hbo_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/uni_hbo_dwh.xlsx')
+uni_hbo_dwh_ams = uni_hbo_dwh[uni_hbo_dwh['location_id']==1]
+
+
 #resolution wanted
 service_area_resolution = 9
 #converting long,lat columns to hexagons
@@ -152,8 +150,50 @@ full_data_ams['end_hexagon'] = full_data_ams.apply(lambda row:
                                     resolution=service_area_resolution), axis=1)
     
 full_data_ams_100= full_data_ams.head(100)
+trainstations_dwh_ams['hexagon'] = trainstations_dwh_ams.apply(lambda row: 
+                            h3.geo_to_h3(lat=row['latitude'],
+                            lng=row['longitude'], 
+                            resolution=service_area_resolution), axis=1)
+uni_hbo_dwh_ams['hexagon'] = uni_hbo_dwh_ams.apply(lambda row: 
+                            h3.geo_to_h3(lat=row['latitude'],
+                            lng=row['longitude'], 
+                            resolution=service_area_resolution), axis=1)
 #save data to excel file
 #full_data_ams.to_excel("full_data_ams.xlsx")
 #1832138
 unique_hexagons_ams_start = full_data_ams.start_hexagon.unique()
 unique_hexagons_ams_end = full_data_ams.end_hexagon.unique()
+
+random_hexagon ='89196953157ffff'
+# function to get boundaries of a hexagon in latitudes and longitudes
+h3.h3_to_geo_boundary(random_hexagon)
+
+def visualize_hexagons(hexagons, color="green", folium_map=None):
+    """
+    hexagons is a list of hexcluster. Each hexcluster is a list of hexagons. 
+    eg. [[hex1, hex2], [hex3, hex4]]
+    """
+    polylines = []
+    lat = []
+    lng = []
+    for hex in hexagons:
+        polygons = h3.h3_set_to_multi_polygon([hex], geo_json=False)
+        # flatten polygons into loops.
+        outlines = [loop for polygon in polygons for loop in polygon]
+        polyline = [outline + [outline[0]] for outline in outlines][0]
+        lat.extend(map(lambda v:v[0],polyline))
+        lng.extend(map(lambda v:v[1],polyline))
+        polylines.append(polyline)
+    
+    if folium_map is None:
+        m = folium.Map(location=[sum(lat)/len(lat), sum(lng)/len(lng)], zoom_start=13, tiles='cartodbpositron')
+    else:
+        m = folium_map
+    for polyline in polylines:
+        my_PolyLine=folium.PolyLine(locations=polyline,weight=8,color=color)
+        m.add_child(my_PolyLine)
+    return m
+
+m = visualize_hexagons(unique_hexagons_ams_start)
+display(m)
+m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\index.html")
