@@ -16,6 +16,10 @@ from felyx_gcp_utils.get_gcp_secrets import access_secret_version
 from sqlalchemy import create_engine
 import os
 import psycopg2
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import numpy as np
+import branca
 #Determine granularity of service areas
 max_res=15
 list_hex_edge_km = []
@@ -118,8 +122,7 @@ reservation_ams = pd.read_sql_query('''SELECT *
                                        WHERE location_id = 1
                                        LIMIT 1000;''',cnx)
         
-
-full_data_ams = pd.read_sql_query('''SELECT a.vehicle_id, a.location_id,
+full_data_ams= pd.read_sql_query('''SELECT a.vehicle_id, a.location_id,
                                   a.reservation_start_time, a.reservation_end_time,
                                   a.start_latitude,a.start_longitude,
                                   a.end_latitude, a.end_longitude,
@@ -137,14 +140,14 @@ full_data_ams = pd.read_sql_query('''SELECT a.vehicle_id, a.location_id,
                                   AND a.rent_start_successful
                                   AND NOT a.dev_account
                                   AND (a.rent_end_successful OR a.net_price > 0)
-                                  AND a.reservation_end_time < '2021-03-04' ''',cnx)
-
+                                  AND a.reservation_end_time < '2021-03-04'
+                                  AND a.start_longitude > 4.7''',cnx)
 trainstations_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/trainstations_dwh.xlsx')
 trainstations_dwh_ams = trainstations_dwh[trainstations_dwh['location_id']==1]
 uni_hbo_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/uni_hbo_dwh.xlsx')
 uni_hbo_dwh_ams = uni_hbo_dwh[uni_hbo_dwh['location_id']==1]
 
-full_data_ams = full_data_ams[full_data_ams['location_id_start']==1]
+#full_data_ams = full_data_ams[full_data_ams['location_id_start']==1]
 #resolution wanted
 service_area_resolution = 9
 #converting long,lat columns to hexagons
@@ -157,8 +160,12 @@ full_data_ams['end_hexagon'] = full_data_ams.apply(lambda row:
                                     h3.geo_to_h3(lat=row['end_latitude'],
                                     lng=row['end_longitude'], 
                                     resolution=service_area_resolution), axis=1)
-    
-full_data_ams_100= full_data_ams.head(100)
+full_data_ams_new['start_hexagon'] = full_data_ams_new.apply(lambda row: 
+                                    h3.geo_to_h3(lat=row['start_latitude'],
+                                    lng=row['start_longitude'], 
+                                    resolution=service_area_resolution), axis=1)
+  
+full_data_ams_new_100= full_data_ams_new.head(100)
 trainstations_dwh_ams['hexagon'] = trainstations_dwh_ams.apply(lambda row: 
                             h3.geo_to_h3(lat=row['latitude'],
                             lng=row['longitude'], 
@@ -171,6 +178,7 @@ uni_hbo_dwh_ams['hexagon'] = uni_hbo_dwh_ams.apply(lambda row:
 #full_data_ams.to_excel("full_data_ams.xlsx")
 #1832138
 unique_hexagons_ams_start = full_data_ams.start_hexagon.unique()
+unique_hexagons_ams_start_new = full_data_ams_new.start_hexagon.unique()
 unique_hexagons_ams_end = full_data_ams.end_hexagon.unique()
 
 random_hexagon ='89196953157ffff'
@@ -199,13 +207,24 @@ def visualize_hexagons(hexagons, color, folium_map=None):
     else:
         m = folium_map
     for polyline in polylines:
-        my_PolyLine=folium.PolyLine(locations=polyline,weight=8,color=color)
+        my_PolyLine=folium.PolyLine(locations=polyline,weight=0.5,color=color,fill=True,fill_color = color,fill_opacity = 0.6)
         m.add_child(my_PolyLine)
     return m
 
-m = visualize_hexagons(unique_hexagons_ams_start,'purple')
-display(m)
-m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\index.html")
+m = visualize_hexagons(unique_hexagons_ams_start_new,
+                               colorFader(c1,c2,
+                                app_opening_count.unique()[0]/maximum_opening_hexagon) 
+                               ,None)
+m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\test.html")
+
+
+
+def colorFader(c1,c2,mix): #fade (linear interpolate) from color c1 (at mix=0) to c2 (mix=1)
+    c1=np.array(mpl.colors.to_rgb(c1))
+    c2=np.array(mpl.colors.to_rgb(c2))
+    return mpl.colors.to_hex((1-mix)*c1 + mix*c2)
+
+#calculates haversine distances between two long lat points in meters
 
 def haversine(coord1, coord2):
     R = 6372800  # Earth radius in meters
@@ -220,3 +239,18 @@ def haversine(coord1, coord2):
         math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
     
     return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+def minimum_distance_to_multiple_points(latitudes,longitudes,latitude,longitude):
+    for i in range(len(latitudes)):
+        minimum_distance = 100000000
+        distance_i = haversine([latitudes[i],longitudes[i]],[latitude,longitude])
+        if  distance_i < minimum_distance:
+            minimum_distance = distance_i
+            minimum_distance_coordinates = [latitudes[i],longitudes[i]]
+    return minimum_distance, minimum_distance_coordinates
+
+full_data_ams_new['distance_closest_trainstation'] = full_data_ams_new.apply(lambda row: 
+                                    minimum_distance_to_multiple_points(
+                                        trainstations_dwh_ams['latitude'],trainstations_dwh_ams['longitude']
+                                        ,row['start_latitude'],row['start_longitude'])[0]
+                                    , axis=1)
