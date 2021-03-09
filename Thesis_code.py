@@ -160,12 +160,8 @@ full_data_ams['end_hexagon'] = full_data_ams.apply(lambda row:
                                     h3.geo_to_h3(lat=row['end_latitude'],
                                     lng=row['end_longitude'], 
                                     resolution=service_area_resolution), axis=1)
-full_data_ams_new['start_hexagon'] = full_data_ams_new.apply(lambda row: 
-                                    h3.geo_to_h3(lat=row['start_latitude'],
-                                    lng=row['start_longitude'], 
-                                    resolution=service_area_resolution), axis=1)
-  
-full_data_ams_new_100= full_data_ams_new.head(100)
+
+full_data_ams_100= full_data_ams.head(100)
 trainstations_dwh_ams['hexagon'] = trainstations_dwh_ams.apply(lambda row: 
                             h3.geo_to_h3(lat=row['latitude'],
                             lng=row['longitude'], 
@@ -178,7 +174,6 @@ uni_hbo_dwh_ams['hexagon'] = uni_hbo_dwh_ams.apply(lambda row:
 #full_data_ams.to_excel("full_data_ams.xlsx")
 #1832138
 unique_hexagons_ams_start = full_data_ams.start_hexagon.unique()
-unique_hexagons_ams_start_new = full_data_ams_new.start_hexagon.unique()
 unique_hexagons_ams_end = full_data_ams.end_hexagon.unique()
 
 random_hexagon ='89196953157ffff'
@@ -249,8 +244,43 @@ def minimum_distance_to_multiple_points(latitudes,longitudes,latitude,longitude)
             minimum_distance_coordinates = [latitudes[i],longitudes[i]]
     return minimum_distance, minimum_distance_coordinates
 
-full_data_ams_new['distance_closest_trainstation'] = full_data_ams_new.apply(lambda row: 
+full_data_ams['distance_closest_trainstation'] = full_data_ams.apply(lambda row: 
                                     minimum_distance_to_multiple_points(
                                         trainstations_dwh_ams['latitude'],trainstations_dwh_ams['longitude']
                                         ,row['start_latitude'],row['start_longitude'])[0]
                                     , axis=1)
+    
+full_data_ams_scooters_used =full_data_ams['start_hexagon'].value_counts()
+maximum_scooters_used = max(full_data_ams_scooters_used)
+
+
+#all reservations in Amsterdam
+c1 = 'green'
+c2='red'
+
+for i in range(len(full_data_ams_scooters_used.unique())):
+    if i == 0:
+        m = visualize_hexagons(full_data_ams_scooters_used.index[full_data_ams_scooters_used 
+                               == full_data_ams_scooters_used.unique()[0]],
+                               colorFader(c1,c2,
+                                full_data_ams_scooters_used.unique()[0]/maximum_scooters_used) 
+                               ,None)
+    else:
+        m = visualize_hexagons(full_data_ams_scooters_used.index[full_data_ams_scooters_used
+                               == full_data_ams_scooters_used.unique()[i]],
+                               colorFader(c1,c2,
+                                full_data_ams_scooters_used.unique()[i]/maximum_scooters_used) 
+                               ,m)
+
+colormap = branca.colormap.LinearColormap(colors=['green','red'],vmin=0,vmax=maximum_scooters_used)
+
+colormap = colormap.to_step(index=[0, maximum_scooters_used* (1/10), maximum_scooters_used* (2/10)
+                                   , maximum_scooters_used* (3/10), maximum_scooters_used* (4/10)
+                                   , maximum_scooters_used* (5/10), maximum_scooters_used* (6/10)
+                                   , maximum_scooters_used* (7/10), maximum_scooters_used* (8/10),
+                                   maximum_scooters_used* (9/10), maximum_scooters_used])
+colormap.caption = 'Scooters reserved and used per hexagon in Amsterdam (service_area)'
+colormap.add_to(m)
+folium.Marker(location=[52.920731882528166, 4.670521006248073],popup='Total scooters reserved in Amsterdam :' 
+              + str(len(full_data_ams)),).add_to(m)
+m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\scooters_used_amsterdam.html")
