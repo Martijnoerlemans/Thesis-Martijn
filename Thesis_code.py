@@ -142,6 +142,36 @@ full_data_ams= pd.read_sql_query('''SELECT a.vehicle_id, a.location_id,
                                   AND (a.rent_end_successful OR a.net_price > 0)
                                   AND a.reservation_end_time < '2021-03-04'
                                   AND a.start_longitude > 4.7''',cnx)
+
+rides = pd.read_sql_query('''SELECT timezone('Europe/Amsterdam', timezone('UTC', a.rent_start_time)) as rent_start_time,
+timezone('Europe/Amsterdam', timezone('UTC', a.reservation_start_time)) as reservation_start_time,
+timezone('Europe/Amsterdam', timezone('UTC', a.reservation_end_time)) as reservation_end_time,
+a.start_latitude,
+a.start_longitude,
+a.end_latitude,
+a.end_longitude,
+a.vehicle_id,
+a.start_battery_level,
+coalesce(sa_start.custom_name,sa_start.default_name) as service_area_start,
+b.sun_hours, b.uv_index, b.wind_speed,
+b.precipitation, b.humidity, b.visibility,
+b.heat_index, b.hour
+FROM reservation as a
+INNER JOIN weather_record  as b ON a.location_id = b.location_id
+LEFT JOIN service_area sa_start on st_contains(sa_start.wgs84_polygon,ST_SetSRID(st_makepoint(a.start_longitude, a.start_latitude),4326)) AND sa_start.activated
+LEFT JOIN service_area sa_end on st_contains(sa_end.wgs84_polygon,ST_SetSRID(st_makepoint(a.end_longitude, a.end_latitude),4326)) AND sa_end.activated
+WHERE a.location_id = 1
+AND DATE_TRUNC('day', reservation_start_time) = DATE_TRUNC('day', b.date)
+AND DATE_PART('hour', reservation_start_time) = b.hour
+and reservation_start_time < '2021-03-11' 
+AND rent_start_time is not null
+AND NOT a.dev_account
+AND a.rent_start_successful
+AND sa_start.id IS NOT NULL
+AND sa_end.id IS NOT NULL
+AND a.start_longitude > 4.7''', cnx)
+
+full_data_ams = rides
 trainstations_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/trainstations_dwh.xlsx')
 trainstations_dwh_ams = trainstations_dwh[trainstations_dwh['location_id']==1]
 uni_hbo_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/uni_hbo_dwh.xlsx')
@@ -202,13 +232,12 @@ def visualize_hexagons(hexagons, color, folium_map=None):
     else:
         m = folium_map
     for polyline in polylines:
-        my_PolyLine=folium.PolyLine(locations=polyline,weight=0.5,color=color,fill=True,fill_color = color,fill_opacity = 0.6)
+        my_PolyLine=folium.PolyLine(locations=polyline,weight=0.2,color=color,fill=True,fill_color = color,fill_opacity = 0.2)
         m.add_child(my_PolyLine)
     return m
 
-m = visualize_hexagons(unique_hexagons_ams_start_new,
-                               colorFader(c1,c2,
-                                app_opening_count.unique()[0]/maximum_opening_hexagon) 
+m = visualize_hexagons(unique_hexagons_ams_start,
+                               'green' 
                                ,None)
 m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\test.html")
 
