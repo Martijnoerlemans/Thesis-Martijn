@@ -23,6 +23,14 @@ import numpy as np
 import branca
 #load data from sql database
 from felyx_gcp_utils.get_gcp_secrets import access_secret_version
+import json
+from shapely.geometry import shape
+#import geoplot
+import matplotlib.pyplot as plt
+from shapely.geometry import Point
+from shapely.geometry import Polygon
+from shapely.geometry import MultiPoint
+import geopandas as gpd
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="C:/Users/Martijn Oerlemans/Desktop/felyx-ai-machine-learning-88e8adf81f5b.json"
 cnx = create_engine(access_secret_version('felyx-ai-machine-learning','DATABASE_URL_DATAWAREHOUSE', "latest"))
 
@@ -97,6 +105,43 @@ reservation_park_mode_enabled_night = pd.read_sql_query('''SELECT received_at, u
                                        AND DATE_TRUNC('day',received_at) < '2021-08-02'
                                        AND DATE_PART('hour',received_at) > 14                                      
                                        ''',cnx)
+                                       
+service_area = pd.read_sql_query('''SELECT *
+                                FROM public.service_area
+                                WHERE location_id =1                                     
+                                       ''',cnx)
+                                       
+rides = pd.read_sql_query('''SELECT timezone('Europe/Amsterdam', timezone('UTC', a.rent_start_time)) as rent_start_time,
+timezone('Europe/Amsterdam', timezone('UTC', a.reservation_start_time)) as reservation_start_time,
+timezone('Europe/Amsterdam', timezone('UTC', a.reservation_end_time)) as reservation_end_time,
+a.start_latitude,
+a.start_longitude,
+a.end_latitude,
+a.end_longitude,
+a.vehicle_id,
+a.start_battery_level,
+coalesce(sa_start.custom_name,sa_start.default_name) as service_area_start,
+b.sun_hours, b.uv_index, b.wind_speed,
+b.precipitation, b.humidity, b.visibility,
+b.heat_index, b.hour
+FROM reservation as a
+INNER JOIN weather_record  as b ON a.location_id = b.location_id
+LEFT JOIN service_area sa_start on st_contains(sa_start.wgs84_polygon,ST_SetSRID(st_makepoint(a.start_longitude, a.start_latitude),4326)) AND sa_start.activated
+LEFT JOIN service_area sa_end on st_contains(sa_end.wgs84_polygon,ST_SetSRID(st_makepoint(a.end_longitude, a.end_latitude),4326)) AND sa_end.activated
+WHERE a.location_id = 1
+AND DATE_TRUNC('day', reservation_start_time) = DATE_TRUNC('day', b.date)
+AND DATE_PART('hour', reservation_start_time) = b.hour
+and reservation_start_time < '2021-03-11' 
+AND rent_start_time is not null
+AND NOT a.dev_account
+AND a.rent_start_successful
+AND sa_start.id IS NOT NULL
+AND sa_end.id IS NOT NULL
+AND a.start_longitude > 4.7''', cnx)
+
+polygons = pd.read_sql_query('''SELECT ST_AsGeoJSON(ST_Transform(wgs84_polygon,4326)), id, default_name 
+                             from public.service_area
+                             WHERE location_id=1''',cnx)
 closest_vehicle_on_app_resume_monday['hexagon'] = closest_vehicle_on_app_resume_monday.apply(lambda row: 
                                     h3.geo_to_h3(lat=row['user_latitude'],
                                     lng=row['user_longitude'], 
@@ -133,7 +178,12 @@ reservation_park_mode_enabled_night['hexagon'] = reservation_park_mode_enabled_n
                                     h3.geo_to_h3(lat=row['user_latitude'],
                                     lng=row['user_longitude'], 
                                     resolution=service_area_resolution), axis=1)
-    
+rides_unique_polygons = rides.service_area_start.unique()
+
+polygons_used = polygons[polygons['default_name'].isin(rides_unique_polygons)]
+polygons_used_unique = polygons_used.default_name.unique()
+polygons_used['st_asgeojson'] = polygons_used['st_asgeojson'].apply(json.loads)
+geom = [shape(i) for i in polygons_used['st_asgeojson']]
 def visualize_hexagons(hexagons, color, folium_map=None):
     """
     hexagons is a list of hexcluster. Each hexcluster is a list of hexagons. 
