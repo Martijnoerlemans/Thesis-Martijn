@@ -203,6 +203,16 @@ uni_hbo_dwh_ams['hexagon'] = uni_hbo_dwh_ams.apply(lambda row:
 #save data to excel file
 #full_data_ams.to_excel("full_data_ams.xlsx")
 #1832138
+data = full_data_ams.groupby(full_data_ams.reservation_start_time.hour)
+
+data =full_data_ams.groupby([pd.Grouper(key='reservation_start_time',freq='H'),
+                             'start_hexagon']).agg({'sun_hours' : ['first'],
+                            'reservation_start_time' : ['count'],'service_area_start':'first',
+                            'start_battery_level' : ['mean'],'uv_index':['first'],
+                            'wind_speed':['first'],'precipitation':['first'],
+                            'humidity':['first'],'visibility':['first'],'heat_index':['first']
+                            ,}).reset_index()
+data100 = data.head(100)
 unique_hexagons_ams_start = full_data_ams.start_hexagon.unique()
 unique_hexagons_ams_end = full_data_ams.end_hexagon.unique()
 

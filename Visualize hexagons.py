@@ -31,6 +31,7 @@ from shapely.geometry import Point
 from shapely.geometry import Polygon
 from shapely.geometry import MultiPoint
 import geopandas as gpd
+
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="C:/Users/Martijn Oerlemans/Desktop/felyx-ai-machine-learning-88e8adf81f5b.json"
 cnx = create_engine(access_secret_version('felyx-ai-machine-learning','DATABASE_URL_DATAWAREHOUSE', "latest"))
 
@@ -138,10 +139,13 @@ AND a.rent_start_successful
 AND sa_start.id IS NOT NULL
 AND sa_end.id IS NOT NULL
 AND a.start_longitude > 4.7''', cnx)
+service_area_resolution = 9
 
 polygons = pd.read_sql_query('''SELECT ST_AsGeoJSON(ST_Transform(wgs84_polygon,4326)), id, default_name 
                              from public.service_area
                              WHERE location_id=1''',cnx)
+                             
+                            
 closest_vehicle_on_app_resume_monday['hexagon'] = closest_vehicle_on_app_resume_monday.apply(lambda row: 
                                     h3.geo_to_h3(lat=row['user_latitude'],
                                     lng=row['user_longitude'], 
@@ -181,9 +185,30 @@ reservation_park_mode_enabled_night['hexagon'] = reservation_park_mode_enabled_n
 rides_unique_polygons = rides.service_area_start.unique()
 
 polygons_used = polygons[polygons['default_name'].isin(rides_unique_polygons)]
+polygons_used = polygons_used.drop_duplicates(subset='default_name', keep="first")
 polygons_used_unique = polygons_used.default_name.unique()
 polygons_used['st_asgeojson'] = polygons_used['st_asgeojson'].apply(json.loads)
 geom = [shape(i) for i in polygons_used['st_asgeojson']]
+polygons_used = gpd.GeoDataFrame(polygons_used,geometry=geom)
+polygons_used.plot()
+polygons_used.crs = {'init' :'epsg:4326'}
+service_area_web = polygons_used.to_crs(epsg=3857)
+
+plot_df.crs = {'init' :'epsg:4326'}
+plot_df_web = plot_df.to_crs(epsg=3857)
+
+m = folium.Map(location=[52.36, 4.88], zoom_start=12, tiles='CartoDB positron')
+for _, r in polygons_used.iterrows():
+    #without simplifying the representation of each borough, the map might not be displayed
+    #sim_geo = gpd.GeoSeries(r['geometry'])
+    sim_geo = gpd.GeoSeries(r['geometry']).simplify(tolerance=0.001)
+    geo_j = sim_geo.to_json()
+    geo_j = folium.GeoJson(data=geo_j,
+                           style_function=lambda x: {'fillColor': 'green','color': 'green'})
+    folium.Popup(r['default_name']).add_to(geo_j)
+    geo_j.add_to(m)
+m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\service_area.html")
+
 def visualize_hexagons(hexagons, color, folium_map=None):
     """
     hexagons is a list of hexcluster. Each hexcluster is a list of hexagons. 
