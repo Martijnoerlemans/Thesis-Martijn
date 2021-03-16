@@ -20,6 +20,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import branca
+import shapefile
+import contextily as ctx
 #Determine granularity of service areas
 max_res=15
 list_hex_edge_km = []
@@ -172,6 +174,7 @@ AND sa_end.id IS NOT NULL
 AND a.start_longitude > 4.7''', cnx)
 
 full_data_ams = rides
+
 trainstations_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/trainstations_dwh.xlsx')
 trainstations_dwh_ams = trainstations_dwh[trainstations_dwh['location_id']==1]
 uni_hbo_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/uni_hbo_dwh.xlsx')
@@ -323,3 +326,50 @@ colormap.add_to(m)
 folium.Marker(location=[52.920731882528166, 4.670521006248073],popup='Total scooters reserved in Amsterdam :' 
               + str(len(full_data_ams)),).add_to(m)
 m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\scooters_used_amsterdam.html")
+
+#loading in environmental data
+#52.290819,4.786194,52.410362,5.038948
+#http://bboxfinder.com/#52.290819,4.786194,52.410362,5.038948
+
+bbox = (532796.6789,6852881.0401,560933.1255,6874666.9972)
+bbox = (78926.7613,429312.5322,104500.6136,445566.2458)
+bbox = (334916.4533,6735309.9095,804545.5551,6956060.0472)
+buurten = gpd.read_file("buurt_2020_v1.shp",bbox=bbox)
+buurten.crs = "EPSG:4326"
+buurten_rotterdam= buurten.to_crs(epsg=4326)
+buurten_rotterdam_web = buurten_rotterdam.to_crs(epsg=3857)
+
+buurten_rotterdam_web.save()
+# buurten_rotterdam.to_pickle('BUURTEN_CBS2017_RDM_')
+
+# CBS Squares
+data500 = gpd.read_file("CBS_vk500_2020_v1.shp",bbox=bbox)
+squares500_rotterdam = data500.to_crs(epsg=4326)
+squares500_rotterdam_web = squares500_rotterdam.to_crs(epsg=3857)
+# squares500_rotterdam.to_pickle('SQUARES_CBS2016_RDM_')
+
+def plot_zips(dataset,variable,title):
+
+    vmin, vmax = 0, dataset[variable].max() 
+    
+    # create figure and axes for Matplotlib
+    fig, ax = plt.subplots(1, figsize=(30, 10))
+
+    dataset.plot(column=variable,cmap='PiYG', linewidth=0.8, ax=ax, edgecolor='0.8', alpha = 0.6) 
+    ctx.add_basemap(ax, source=ctx.providers.CartoDB.Voyager)
+    
+    ax.axis('off')
+    ax.set_title(title, fontdict={'fontsize': '20', 'fontweight' : '3'})
+
+    # Create colorbar as a legend
+    sm = plt.cm.ScalarMappable(cmap='PiYG', norm=plt.Normalize(vmin=vmin, vmax=vmax))
+
+    # empty array for the data range
+    sm._A = []
+
+    # add the colorbar to the figure
+    cbar = fig.colorbar(sm)
+    
+input_graph = buurten_rotterdam_web
+
+plot_zips(input_graph,'P_LAAGINKP','% of low income households per neighborhood') 

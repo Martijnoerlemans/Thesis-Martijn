@@ -31,6 +31,7 @@ from shapely.geometry import Point
 from shapely.geometry import Polygon
 from shapely.geometry import MultiPoint
 import geopandas as gpd
+import shapefile
 
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="C:/Users/Martijn Oerlemans/Desktop/felyx-ai-machine-learning-88e8adf81f5b.json"
 cnx = create_engine(access_secret_version('felyx-ai-machine-learning','DATABASE_URL_DATAWAREHOUSE', "latest"))
@@ -405,3 +406,33 @@ colormap.add_to(m)
 folium.Marker(location=[51.920731882528166, 4.470521006248073],popup='Total reservations park mode:' 
               + str(len(reservation_park_mode_enabled)),).add_to(m)
 m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\reservation_enabled_last_week.html")
+
+
+
+sf = shapefile.Reader(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/CBS_vk500_2020_v1.shp')
+with shapefile.Reader(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/CBS_vk500_2020_v1.shp') as shp:
+    print(shp)
+s = sf.shape(0)
+geoj = s.__geo_interface__
+geoj["type"]
+polygons_used['st_asgeojson'] = polygons_used['st_asgeojson'].apply(json.loads)
+geom = [shape(i) for i in polygons_used['st_asgeojson']]
+polygons_used = gpd.GeoDataFrame(polygons_used,geometry=geom)
+polygons_used.plot()
+polygons_used.crs = {'init' :'epsg:4326'}
+service_area_web = polygons_used.to_crs(epsg=3857)
+
+plot_df.crs = {'init' :'epsg:4326'}
+plot_df_web = plot_df.to_crs(epsg=3857)
+
+m = folium.Map(location=[52.36, 4.88], zoom_start=12, tiles='CartoDB positron')
+for _, r in polygons_used.iterrows():
+    #without simplifying the representation of each borough, the map might not be displayed
+    #sim_geo = gpd.GeoSeries(r['geometry'])
+    sim_geo = gpd.GeoSeries(r['geometry']).simplify(tolerance=0.001)
+    geo_j = sim_geo.to_json()
+    geo_j = folium.GeoJson(data=geo_j,
+                           style_function=lambda x: {'fillColor': 'green','color': 'green'})
+    folium.Popup(r['default_name']).add_to(geo_j)
+    geo_j.add_to(m)
+m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\service_area.html")
