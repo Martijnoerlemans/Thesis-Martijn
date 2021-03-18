@@ -21,6 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import branca
 import shapefile
+import geopandas as gpd
 import contextily as ctx
 #Determine granularity of service areas
 max_res=15
@@ -135,7 +136,7 @@ full_data_ams= pd.read_sql_query('''SELECT a.vehicle_id, a.location_id,
                                   FROM reservation as a
                                   INNER JOIN weather_record  as b
                                   ON a.location_id = b.location_id
-                                  AND a.location_id =1
+                                  AND a.location_id = 1
                                   AND a.location_id_start = 1
                                   AND DATE_TRUNC('day', a.reservation_start_time) = DATE_TRUNC('day', b.date)
                                   AND DATE_PART('hour', a.reservation_start_time) = b.hour
@@ -334,7 +335,9 @@ m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\scooters_used_
 bbox = (532796.6789,6852881.0401,560933.1255,6874666.9972)
 bbox = (78926.7613,429312.5322,104500.6136,445566.2458)
 bbox = (334916.4533,6735309.9095,804545.5551,6956060.0472)
-buurten = gpd.read_file("buurt_2020_v1.shp",bbox=bbox)
+
+
+buurten = gpd.read_file(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\buurt_2020_v1.shp")
 buurten.crs = "EPSG:4326"
 buurten_rotterdam= buurten.to_crs(epsg=4326)
 buurten_rotterdam_web = buurten_rotterdam.to_crs(epsg=3857)
@@ -348,6 +351,16 @@ squares500_rotterdam = data500.to_crs(epsg=4326)
 squares500_rotterdam_web = squares500_rotterdam.to_crs(epsg=3857)
 # squares500_rotterdam.to_pickle('SQUARES_CBS2016_RDM_')
 
+wijkbuurtkaart = gpd.read_file('Documents\GitHub\hello-world2\WijkBuurtkaart_2020_v1.gpkg')
+wijkbuurtkaart_ams = wijkbuurtkaart[wijkbuurtkaart['gemeentenaam'] == 'Amsterdam']
+wijkbuurtkaart_ams.crs = "EPSG:4326"
+wijkbuurtkaart_ams= wijkbuurtkaart_ams.to_crs(epsg=4326)
+wijkbuurtkaart_ams_web = wijkbuurtkaart_ams.to_crs(epsg=3857)
+
+wijkbuurtkaart10 = wijkbuurtkaart.head(10)
+wijkbuurtkaart_ams = wijkbuurtkaart[wijkbuurtkaart['gemeentenaam'] == 'Amsterdam']
+#get current working directory
+os.getcwd()
 def plot_zips(dataset,variable,title):
 
     vmin, vmax = 0, dataset[variable].max() 
@@ -370,6 +383,6 @@ def plot_zips(dataset,variable,title):
     # add the colorbar to the figure
     cbar = fig.colorbar(sm)
     
-input_graph = buurten_rotterdam_web
+input_graph = wijkbuurtkaart_ams 
 
-plot_zips(input_graph,'P_LAAGINKP','% of low income households per neighborhood') 
+plot_zips(input_graph,'percentage_gehuwd','percentage_gehuwd households per neighborhood')
