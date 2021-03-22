@@ -4,6 +4,7 @@ Created on Fri Feb 19 16:32:42 2021
 
 @author: Martijn Oerlemans
 """
+# %% packages
 import math
 
 from h3 import h3
@@ -23,7 +24,7 @@ import branca
 import shapefile
 import geopandas as gpd
 import contextily as ctx
-#Determine granularity of service areas
+# %%Determine granularity of service areas
 max_res=15
 list_hex_edge_km = []
 list_hex_edge_m = []
@@ -44,7 +45,7 @@ for i in range(0,max_res + 1):
     am = h3.hex_area(resolution=i, unit='m^2')
     list_hex_area_sqkm.append(round(akm,3))
     list_hex_area_sqm.append(round(am,3))
-
+#table with different levels of hexagons
 df_meta = pd.DataFrame({"edge_length_km" : list_hex_edge_km,
                         "perimeter_km" : list_hex_perimeter_km,
                         "area_sqkm": list_hex_area_sqkm,
@@ -57,7 +58,7 @@ df_meta[["edge_length_km","perimeter_km","area_sqkm", "edge_length_m", "perimete
 
 
 
-
+#Visualizing a point in different levels of hexagons
 lat_centr_point = 52.354675
 lon_centr_point = 4.875726
 list_hex_res = []
@@ -110,7 +111,8 @@ GeoJson(
 
 map_example.save('1_resolutions.html')
 
-#load data from sql database
+# %%loading data from sql database and other sources
+#setting up the connection
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="C:/Users/Martijn Oerlemans/Desktop/felyx-ai-machine-learning-88e8adf81f5b.json"
 cnx = create_engine(access_secret_version('felyx-ai-machine-learning','DATABASE_URL_DATAWAREHOUSE', "latest"))
 
@@ -125,26 +127,26 @@ reservation_ams = pd.read_sql_query('''SELECT *
                                        WHERE location_id = 1
                                        LIMIT 1000;''',cnx)
         
-full_data_ams= pd.read_sql_query('''SELECT a.vehicle_id, a.location_id,
-                                  a.reservation_start_time, a.reservation_end_time,
-                                  a.start_latitude,a.start_longitude,
-                                  a.end_latitude, a.end_longitude,
-                                  b.date, b.feels_like_temp, b.snow_level,
-                                  b.sun_hours, b.uv_index, b.wind_speed,
-                                  b.precipitation, b.humidity, b.visibility,
-                                  b.heat_index, b.hour
-                                  FROM reservation as a
-                                  INNER JOIN weather_record  as b
-                                  ON a.location_id = b.location_id
-                                  AND a.location_id = 1
-                                  AND a.location_id_start = 1
-                                  AND DATE_TRUNC('day', a.reservation_start_time) = DATE_TRUNC('day', b.date)
-                                  AND DATE_PART('hour', a.reservation_start_time) = b.hour
-                                  AND a.rent_start_successful
-                                  AND NOT a.dev_account
-                                  AND (a.rent_end_successful OR a.net_price > 0)
-                                  AND a.reservation_end_time < '2021-03-04'
-                                  AND a.start_longitude > 4.7''',cnx)
+# full_data_ams= pd.read_sql_query('''SELECT a.vehicle_id, a.location_id,
+#                                   a.reservation_start_time, a.reservation_end_time,
+#                                   a.start_latitude,a.start_longitude,
+#                                   a.end_latitude, a.end_longitude,
+#                                   b.date, b.feels_like_temp, b.snow_level,
+#                                   b.sun_hours, b.uv_index, b.wind_speed,
+#                                   b.precipitation, b.humidity, b.visibility,
+#                                   b.heat_index, b.hour
+#                                   FROM reservation as a
+#                                   INNER JOIN weather_record  as b
+#                                   ON a.location_id = b.location_id
+#                                   AND a.location_id = 1
+#                                   AND a.location_id_start = 1
+#                                   AND DATE_TRUNC('day', a.reservation_start_time) = DATE_TRUNC('day', b.date)
+#                                   AND DATE_PART('hour', a.reservation_start_time) = b.hour
+#                                   AND a.rent_start_successful
+#                                   AND NOT a.dev_account
+#                                   AND (a.rent_end_successful OR a.net_price > 0)
+#                                   AND a.reservation_end_time < '2021-03-04'
+#                                   AND a.start_longitude > 4.7''',cnx)
 
 rides = pd.read_sql_query('''SELECT timezone('Europe/Amsterdam', timezone('UTC', a.rent_start_time)) as rent_start_time,
 timezone('Europe/Amsterdam', timezone('UTC', a.reservation_start_time)) as reservation_start_time,
@@ -178,9 +180,16 @@ full_data_ams = rides
 
 trainstations_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/trainstations_dwh.xlsx')
 trainstations_dwh_ams = trainstations_dwh[trainstations_dwh['location_id']==1]
+
 uni_hbo_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/uni_hbo_dwh.xlsx')
 uni_hbo_dwh_ams = uni_hbo_dwh[uni_hbo_dwh['location_id']==1]
 
+bodemgebruik_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/bodemgebruik_dwh.xlsx')
+bodemgebruik_dwh_ams = bodemgebruik_dwh[bodemgebruik_dwh['location_id']==1]
+
+cbs_zipcode_2019_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/cbs_zipcode_2019_dwh.xlsx')
+cbs_zipcode_2019_dwh_ams = cbs_zipcode_2019_dwh[cbs_zipcode_2019_dwh['location_id']==1]
+# %% creating data and appending the dataset
 #full_data_ams = full_data_ams[full_data_ams['location_id_start']==1]
 #resolution wanted
 service_area_resolution = 9
@@ -220,6 +229,36 @@ data100 = data.head(100)
 unique_hexagons_ams_start = full_data_ams.start_hexagon.unique()
 unique_hexagons_ams_end = full_data_ams.end_hexagon.unique()
 
+def haversine(coord1, coord2):
+    R = 6372800  # Earth radius in meters
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    
+    phi1, phi2 = math.radians(lat1), math.radians(lat2) 
+    dphi       = math.radians(lat2 - lat1)
+    dlambda    = math.radians(lon2 - lon1)
+    
+    a = math.sin(dphi/2)**2 + \
+        math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
+    
+    return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+def minimum_distance_to_multiple_points(latitudes,longitudes,latitude,longitude):
+    for i in range(len(latitudes)):
+        minimum_distance = 100000000
+        distance_i = haversine([latitudes[i],longitudes[i]],[latitude,longitude])
+        if  distance_i < minimum_distance:
+            minimum_distance = distance_i
+            minimum_distance_coordinates = [latitudes[i],longitudes[i]]
+    return minimum_distance, minimum_distance_coordinates
+
+full_data_ams['distance_closest_trainstation'] = full_data_ams.apply(lambda row: 
+                                    minimum_distance_to_multiple_points(
+                                        trainstations_dwh_ams['latitude'],trainstations_dwh_ams['longitude']
+                                        ,row['start_latitude'],row['start_longitude'])[0]
+                                    , axis=1)
+
+# %% Visualizations
 random_hexagon ='89196953157ffff'
 # function to get boundaries of a hexagon in latitudes and longitudes
 h3.h3_to_geo_boundary(random_hexagon)
@@ -264,34 +303,7 @@ def colorFader(c1,c2,mix): #fade (linear interpolate) from color c1 (at mix=0) t
 
 #calculates haversine distances between two long lat points in meters
 
-def haversine(coord1, coord2):
-    R = 6372800  # Earth radius in meters
-    lat1, lon1 = coord1
-    lat2, lon2 = coord2
-    
-    phi1, phi2 = math.radians(lat1), math.radians(lat2) 
-    dphi       = math.radians(lat2 - lat1)
-    dlambda    = math.radians(lon2 - lon1)
-    
-    a = math.sin(dphi/2)**2 + \
-        math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
-    
-    return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
-def minimum_distance_to_multiple_points(latitudes,longitudes,latitude,longitude):
-    for i in range(len(latitudes)):
-        minimum_distance = 100000000
-        distance_i = haversine([latitudes[i],longitudes[i]],[latitude,longitude])
-        if  distance_i < minimum_distance:
-            minimum_distance = distance_i
-            minimum_distance_coordinates = [latitudes[i],longitudes[i]]
-    return minimum_distance, minimum_distance_coordinates
-
-full_data_ams['distance_closest_trainstation'] = full_data_ams.apply(lambda row: 
-                                    minimum_distance_to_multiple_points(
-                                        trainstations_dwh_ams['latitude'],trainstations_dwh_ams['longitude']
-                                        ,row['start_latitude'],row['start_longitude'])[0]
-                                    , axis=1)
     
 full_data_ams_scooters_used =full_data_ams['start_hexagon'].value_counts()
 maximum_scooters_used = max(full_data_ams_scooters_used)

@@ -195,8 +195,7 @@ polygons_used.plot()
 polygons_used.crs = {'init' :'epsg:4326'}
 service_area_web = polygons_used.to_crs(epsg=3857)
 
-plot_df.crs = {'init' :'epsg:4326'}
-plot_df_web = plot_df.to_crs(epsg=3857)
+
 
 m = folium.Map(location=[52.36, 4.88], zoom_start=12, tiles='CartoDB positron')
 for _, r in polygons_used.iterrows():
