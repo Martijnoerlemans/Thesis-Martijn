@@ -24,6 +24,10 @@ import branca
 import shapefile
 import geopandas as gpd
 import contextily as ctx
+from shapely import wkt
+from tqdm import tqdm
+import rtree
+from shapely.geometry import Polygon
 # %%Determine granularity of service areas
 max_res=15
 list_hex_edge_km = []
@@ -174,7 +178,8 @@ AND NOT a.dev_account
 AND a.rent_start_successful
 AND sa_start.id IS NOT NULL
 AND sa_end.id IS NOT NULL
-AND a.start_longitude > 4.7''', cnx)
+AND a.start_longitude > 4.7
+LIMIT 1000;''', cnx)
 
 full_data_ams = rides
 
@@ -188,7 +193,33 @@ bodemgebruik_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/h
 bodemgebruik_dwh_ams = bodemgebruik_dwh[bodemgebruik_dwh['location_id']==1]
 
 cbs_zipcode_2019_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/cbs_zipcode_2019_dwh.xlsx')
-cbs_zipcode_2019_dwh_ams = cbs_zipcode_2019_dwh[cbs_zipcode_2019_dwh['location_id']==1]
+
+metro_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/metro_dwh.xlsx')
+metro_ams = metro_dwh[metro_dwh['location_id']==1]
+
+kwb_2020 = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/kwb-2020.xls')
+kwb_2020_ams = kwb_2020[kwb_2020['gm_naam']=='Amsterdam']
+#loading in environmental data
+#52.290819,4.786194,52.410362,5.038948
+#http://bboxfinder.com/#52.290819,4.786194,52.410362,5.038948
+# EPSG: 28992 Amersfoort / RD New
+bbox = (113995.7727,478262.1749,131303.8192,491450.0742)
+
+fp = r'C:\Users\Martijn Oerlemans\Downloads\2021-cbs_vk500_2020_v1\CBS_vk500_2020_v1.shp'
+CBS_vk500_2020_v1 = gpd.read_file(fp,bbox=bbox).to_crs(epsg=4326)
+
+fp = r'C:\Users\Martijn Oerlemans\Downloads\2021-cbs_vk500_2019_v2\CBS_vk500_2019_v2.shp'
+CBS_vk500_2019_v2 = gpd.read_file(fp,bbox=bbox).to_crs(epsg=4326)
+
+fp = r'C:\Users\Martijn Oerlemans\Downloads\2021-cbs_vk500_2018_v3\CBS_vk500_2018_v3.shp'
+CBS_vk500_2018_v3 = gpd.read_file(fp,bbox=bbox).to_crs(epsg=4326)
+
+fp = r'C:\Users\Martijn Oerlemans\Downloads\WijkBuurtkaart_2020_v1\gemeente_2020_v1.shp'
+gemeente_2020_v1 = gpd.read_file(fp,bbox=bbox).to_crs(epsg=4326)
+
+fp = r'C:\Users\Martijn Oerlemans\Downloads\bestandbodemgebruik2015\BBG2015.shp'
+BBG2015 = gpd.read_file(fp,bbox=bbox).to_crs(epsg=4326)
+
 # %% creating data and appending the dataset
 #full_data_ams = full_data_ams[full_data_ams['location_id_start']==1]
 #resolution wanted
@@ -213,9 +244,32 @@ uni_hbo_dwh_ams['hexagon'] = uni_hbo_dwh_ams.apply(lambda row:
                             h3.geo_to_h3(lat=row['latitude'],
                             lng=row['longitude'], 
                             resolution=service_area_resolution), axis=1)
+
+    
+#converting hexagons to polygons
+full_data_ams['Polygon']  = full_data_ams.apply(lambda row: 
+                                Polygon(h3.h3_to_geo_boundary(row['start_hexagon'],
+                                geo_json=True)).wkt, axis=1).apply(wkt.loads)
+#set geometry
+full_data_ams = full_data_ams.set_geometry(full_data_ams['Polygon'])  
+    
+#converting series to geoseries
+full_data_ams['geometry'] = gpd.GeoSeries(full_data_ams['geometry'],crs = 'EPSG:4326')
 #save data to excel file
 #full_data_ams.to_excel("full_data_ams.xlsx")
 #1832138
+#check what kind of crs
+full_data_ams_gdf.crs
+CBS_vk500_2020_v1.crs
+#convert to geodataframe
+full_data_ams_gdf = gpd.GeoDataFrame(full_data_ams, crs="EPSG:4326",geometry = 'Polygon')
+
+
+a = gpd.sjoin(full_data_ams_gdf,
+                         CBS_vk500_2020_v1,
+                         how="left", 
+                         op="overlaps")
+
 data = full_data_ams.groupby(full_data_ams.reservation_start_time.hour)
 
 data =full_data_ams.groupby([pd.Grouper(key='reservation_start_time',freq='H'),
@@ -226,6 +280,7 @@ data =full_data_ams.groupby([pd.Grouper(key='reservation_start_time',freq='H'),
                             'humidity':['first'],'visibility':['first'],'heat_index':['first']
                             ,}).reset_index()
 data100 = data.head(100)
+
 unique_hexagons_ams_start = full_data_ams.start_hexagon.unique()
 unique_hexagons_ams_end = full_data_ams.end_hexagon.unique()
 
@@ -343,11 +398,12 @@ m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\scooters_used_
 #loading in environmental data
 #52.290819,4.786194,52.410362,5.038948
 #http://bboxfinder.com/#52.290819,4.786194,52.410362,5.038948
+# EPSG: 28992 Amersfoort / RD New
+bbox = (113995.7727,478262.1749,131303.8192,491450.0742)
 
 bbox = (532796.6789,6852881.0401,560933.1255,6874666.9972)
 bbox = (78926.7613,429312.5322,104500.6136,445566.2458)
 bbox = (334916.4533,6735309.9095,804545.5551,6956060.0472)
-
 
 buurten = gpd.read_file(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\buurt_2020_v1.shp")
 buurten.crs = "EPSG:4326"
@@ -371,8 +427,32 @@ wijkbuurtkaart_ams_web = wijkbuurtkaart_ams.to_crs(epsg=3857)
 
 wijkbuurtkaart10 = wijkbuurtkaart.head(10)
 wijkbuurtkaart_ams = wijkbuurtkaart[wijkbuurtkaart['gemeentenaam'] == 'Amsterdam']
+
+cbs_vk500_2020 = gpd.read_file('Documents\GitHub\hello-world2\cbs_vk500_2020.gpkg')
+cbs_vk500_2020_head = cbs_vk500_2020.head(1)
+cbs_vk500_2020_1000 = cbs_vk500_2020.head(1000)
+cbs_vk500_2020.crs = "EPSG:4326"
+cbs_vk500_2020 = cbs_vk500_2020.to_crs(epsg=4326)
+
+cbs_vk500_2020_head['geometry'] = cbs_vk500_2020_head['geometry'].apply(json.loads)
+
 #get current working directory
 os.getcwd()
+
+
+data3 = data2.to_crs(epsg=4326)
+
+a = cbs_vk500_2020_head['geometry'].convex_hull
+b = a.__geo_interface__
+c = b['features'][1]
+d = c['geometry']
+cbs_vk500_2020_head['geometry'].to_json()
+list(h3.polyfill(a, 9))
+b = a['features'][1]
+c = b['geometry']
+d = cbs_vk500_2020_head['geometry'].convex_hull
+e=d.__geo_interface__
+d.to_json()
 def plot_zips(dataset,variable,title):
 
     vmin, vmax = 0, dataset[variable].max() 
@@ -394,7 +474,26 @@ def plot_zips(dataset,variable,title):
 
     # add the colorbar to the figure
     cbar = fig.colorbar(sm)
+    plt.show()
+    plt.savefig('C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/testfigure.png')
     
-input_graph = wijkbuurtkaart_ams 
+input_graph = CBS_vk500_2020_v1
 
+plot_zips(input_graph,'INWONER','percentage_gehuwd households per neighborhood')
+
+sf = gpd.read_file('C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/woonbrt10_region.shp')
+with shapefile.Reader(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/woonbrt10_region.shp') as shp:
+    print(shp)
+    
+s = sf.shape
+geoj = s.__geo_interface__
+
+geoj["type"]
+polygons_used['st_asgeojson'] = polygons_used['st_asgeojson'].apply(json.loads)
+geom = [shape(i) for i in polygons_used['st_asgeojson']]
+polygons_used = gpd.GeoDataFrame(polygons_used,geometry=geom)
 plot_zips(input_graph,'percentage_gehuwd','percentage_gehuwd households per neighborhood')
+
+input_graph = cbs_vk500_2020
+
+
