@@ -28,6 +28,7 @@ from shapely import wkt
 from tqdm import tqdm
 import rtree
 from shapely.geometry import Polygon
+from shapely.geometry import Point
 # %%Determine granularity of service areas
 max_res=15
 list_hex_edge_km = []
@@ -219,17 +220,28 @@ gemeente_2020_v1 = gpd.read_file(fp,bbox=bbox).to_crs(epsg=4326)
 
 fp = r'C:\Users\Martijn Oerlemans\Downloads\bestandbodemgebruik2015\BBG2015.shp'
 BBG2015 = gpd.read_file(fp,bbox=bbox).to_crs(epsg=4326)
+BBG2015 = BBG2015.drop(columns = ['Shape_Leng', 'Shape_Area'], axis=1)
+BBG2015.Omschrijvi.unique()
+OmschrijvingToKeep = ['Vliegveld',
+       'Detailhandel en horeca', 'Openbare voorziening',
+       'Sociaal-culturele voorziening','Park en plantsoen',
+       'Sportterrein', 'Volkstuin', 'Dagrecreatief terrein', 
+       'Bos', 'Water met recreatieve functie']
+BBG2015  = BBG2015[BBG2015['Omschrijvi'].isin(OmschrijvingToKeep)]
 
+BBG2015_head = BBG2015.head()
 # %% creating data and appending the dataset
 #full_data_ams = full_data_ams[full_data_ams['location_id_start']==1]
 #resolution wanted
 service_area_resolution = 9
 #converting long,lat columns to hexagons
+
 full_data_ams['start_hexagon'] = full_data_ams.apply(lambda row: 
                                     h3.geo_to_h3(lat=row['start_latitude'],
                                     lng=row['start_longitude'], 
                                     resolution=service_area_resolution), axis=1)
 
+    
 full_data_ams['end_hexagon'] = full_data_ams.apply(lambda row: 
                                     h3.geo_to_h3(lat=row['end_latitude'],
                                     lng=row['end_longitude'], 
@@ -246,38 +258,48 @@ uni_hbo_dwh_ams['hexagon'] = uni_hbo_dwh_ams.apply(lambda row:
                             resolution=service_area_resolution), axis=1)
 
     
-#converting hexagons to polygons
+#converting hexagons to polygons or points
 full_data_ams['Polygon']  = full_data_ams.apply(lambda row: 
                                 Polygon(h3.h3_to_geo_boundary(row['start_hexagon'],
                                 geo_json=True)).wkt, axis=1).apply(wkt.loads)
+full_data_ams['centroid_start_hexagon']=full_data_ams.apply(lambda row: 
+                                Point(h3.h3_to_geo(row['start_hexagon'])).wkt, axis=1).apply(wkt.loads)    
 #set geometry
-full_data_ams = full_data_ams.set_geometry(full_data_ams['Polygon'])  
-    
+full_data_ams = full_data_ams.set_geometry(full_data_ams['Polygon'])
+  
+# full_data_ams = full_data_ams.set_geometry(full_data_ams['centroid_start_hexagon'])
 #converting series to geoseries
-full_data_ams['geometry'] = gpd.GeoSeries(full_data_ams['geometry'],crs = 'EPSG:4326')
+full_data_ams['Polygon'] = gpd.GeoSeries(full_data_ams['Polyhon'],crs = 'EPSG:4326')
+
+# full_data_ams['geometry'] = gpd.GeoSeries(full_data_ams['centroid_start_hexagon'],crs = 'EPSG:4326')
 #save data to excel file
 #full_data_ams.to_excel("full_data_ams.xlsx")
 #1832138
 #check what kind of crs
-full_data_ams_gdf.crs
+full_data_ams.crs
 CBS_vk500_2020_v1.crs
 #convert to geodataframe
 full_data_ams_gdf = gpd.GeoDataFrame(full_data_ams, crs="EPSG:4326",geometry = 'Polygon')
+# full_data_ams_gdf = gpd.GeoDataFrame(full_data_ams, crs="EPSG:4326",geometry = 'centroid_start_hexagon')
 
-
+b= gpd.sjoin(full_data_ams_gdf,
+                         BBG2015,
+                         how="inner", 
+                         op="contains")
+del BBG2015
 a = gpd.sjoin(full_data_ams_gdf,
                          CBS_vk500_2020_v1,
                          how="left", 
-                         op="overlaps")
+                         op="intersects")
 
 data = full_data_ams.groupby(full_data_ams.reservation_start_time.hour)
 
-data =full_data_ams.groupby([pd.Grouper(key='reservation_start_time',freq='H'),
+data =full_data_ams.groupby([pd.Grouper(key='reservation_start_time',freq='3H'),
                              'start_hexagon']).agg({'sun_hours' : ['first'],
                             'reservation_start_time' : ['count'],'service_area_start':'first',
                             'start_battery_level' : ['mean'],'uv_index':['first'],
                             'wind_speed':['first'],'precipitation':['first'],
-                            'humidity':['first'],'visibility':['first'],'heat_index':['first']
+                            'humidity':['first'],'visibility':['first'],'heat_index':['first'],'Polygon':['first']
                             ,}).reset_index()
 data100 = data.head(100)
 

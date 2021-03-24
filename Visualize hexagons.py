@@ -28,7 +28,7 @@ from shapely.geometry import shape
 #import geoplot
 import matplotlib.pyplot as plt
 from shapely.geometry import Point
-from shapely.geometry import Polygon
+from shapely.geometry import Polyggion
 from shapely.geometry import MultiPoint
 import geopandas as gpd
 import shapefile
