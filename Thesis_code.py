@@ -242,34 +242,34 @@ full_data_ams['start_hexagon'] = full_data_ams.apply(lambda row:
                                     resolution=service_area_resolution), axis=1)
 
     
-full_data_ams['end_hexagon'] = full_data_ams.apply(lambda row: 
-                                    h3.geo_to_h3(lat=row['end_latitude'],
-                                    lng=row['end_longitude'], 
-                                    resolution=service_area_resolution), axis=1)
+# full_data_ams['end_hexagon'] = full_data_ams.apply(lambda row: 
+#                                     h3.geo_to_h3(lat=row['end_latitude'],
+#                                     lng=row['end_longitude'], 
+#                                     resolution=service_area_resolution), axis=1)
 
-full_data_ams_100= full_data_ams.head(100)
-trainstations_dwh_ams['hexagon'] = trainstations_dwh_ams.apply(lambda row: 
-                            h3.geo_to_h3(lat=row['latitude'],
-                            lng=row['longitude'], 
-                            resolution=service_area_resolution), axis=1)
-uni_hbo_dwh_ams['hexagon'] = uni_hbo_dwh_ams.apply(lambda row: 
-                            h3.geo_to_h3(lat=row['latitude'],
-                            lng=row['longitude'], 
-                            resolution=service_area_resolution), axis=1)
+# full_data_ams_100= full_data_ams.head(100)
+# trainstations_dwh_ams['hexagon'] = trainstations_dwh_ams.apply(lambda row: 
+#                             h3.geo_to_h3(lat=row['latitude'],
+#                             lng=row['longitude'], 
+#                             resolution=service_area_resolution), axis=1)
+# uni_hbo_dwh_ams['hexagon'] = uni_hbo_dwh_ams.apply(lambda row: 
+#                             h3.geo_to_h3(lat=row['latitude'],
+#                             lng=row['longitude'], 
+#                             resolution=service_area_resolution), axis=1)
 
     
 #converting hexagons to polygons or points
 full_data_ams['Polygon']  = full_data_ams.apply(lambda row: 
                                 Polygon(h3.h3_to_geo_boundary(row['start_hexagon'],
                                 geo_json=True)).wkt, axis=1).apply(wkt.loads)
-full_data_ams['centroid_start_hexagon']=full_data_ams.apply(lambda row: 
-                                Point(h3.h3_to_geo(row['start_hexagon'])).wkt, axis=1).apply(wkt.loads)    
+# full_data_ams['centroid_start_hexagon']=full_data_ams.apply(lambda row: 
+#                                 Point(h3.h3_to_geo(row['start_hexagon'])).wkt, axis=1).apply(wkt.loads)    
 #set geometry
 full_data_ams = full_data_ams.set_geometry(full_data_ams['Polygon'])
   
 # full_data_ams = full_data_ams.set_geometry(full_data_ams['centroid_start_hexagon'])
 #converting series to geoseries
-full_data_ams['Polygon'] = gpd.GeoSeries(full_data_ams['Polyhon'],crs = 'EPSG:4326')
+full_data_ams['Polygon'] = gpd.GeoSeries(full_data_ams['Polygon'],crs = 'EPSG:4326')
 
 # full_data_ams['geometry'] = gpd.GeoSeries(full_data_ams['centroid_start_hexagon'],crs = 'EPSG:4326')
 #save data to excel file
@@ -281,16 +281,49 @@ CBS_vk500_2020_v1.crs
 #convert to geodataframe
 full_data_ams_gdf = gpd.GeoDataFrame(full_data_ams, crs="EPSG:4326",geometry = 'Polygon')
 # full_data_ams_gdf = gpd.GeoDataFrame(full_data_ams, crs="EPSG:4326",geometry = 'centroid_start_hexagon')
-
-b= gpd.sjoin(full_data_ams_gdf,
+#geospatial join on hexagons that are in certain polygon of bodemgebruik
+full_data_ams_gdf_bbg= gpd.sjoin(full_data_ams_gdf,
                          BBG2015,
-                         how="inner", 
-                         op="contains")
+                         how="left", 
+                         op="overlaps")
+#drop irrelevant columns
+full_data_ams_gdf_bbg= full_data_ams_gdf_bbg.drop(['index_right','BG2015', 'Hoofdgroep'], 1)
+#drop duplicates
+full_data_ams_gdf_bbg = full_data_ams_gdf_bbg.drop_duplicates()
+#Cluster bodemgebruik per instance
+full_data_ams_gdf_groundgroups = full_data_ams_gdf_bbg['Omschrijvi'].groupby([full_data_ams_gdf_bbg.index]).apply(list)
+#make into a list
+full_data_ams_gdf_groundgroups = full_data_ams_gdf_groundgroups.tolist() # list of lists is required for the following code
+#make into dataframe
+df = pd.DataFrame(
+    {'groups':
+full_data_ams_gdf_groundgroups
+    }, columns=['groups'])
+#create dummy for all bodemgebruik types and handle the NaNs
+df =df.groups.apply(lambda x: pd.Series([1] * len(x), index=x)).fillna(0, downcast='infer')
+#Concatenate the dummies table to the original table
+full_data_ams_bbg = pd.concat([full_data_ams_gdf, df], axis=1)
+
+#delete this big boy table as it is very large
 del BBG2015
-a = gpd.sjoin(full_data_ams_gdf,
+
+
+
+full_data_ams_bbg_CBS = gpd.sjoin(full_data_ams_bbg,
                          CBS_vk500_2020_v1,
                          how="left", 
-                         op="intersects")
+                         op="overlaps")
+#convert back to dataframe
+full_data_ams_bbg_CBS =pd.DataFrame(full_data_ams_bbg_CBS)
+a = full_data_ams_bbg_CBS['INWONER'].groupby([full_data_ams_bbg_CBS.index]).apply(list)
+#drop irrelevant columns
+full_data_ams_bbg_CBS = full_data_ams_bbg_CBS.drop(['Polygon','geometry', 'nan','index_right','c28992r500',], 1)
+data =full_data_ams_bbg_CBS.groupby([full_data_ams_bbg_CBS.index]).agg({'sun_hours' : ['first'],
+                            'reservation_start_time' : ['mean'],'service_area_start':'first',
+                            'start_battery_level' : ['mean'],'uv_index':['first'],
+                            'wind_speed':['first'],'precipitation':['first'],
+                            'humidity':['first'],'visibility':['first'],'heat_index':['first'],
+                            })
 
 data = full_data_ams.groupby(full_data_ams.reservation_start_time.hour)
 

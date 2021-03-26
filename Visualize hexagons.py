@@ -28,7 +28,7 @@ from shapely.geometry import shape
 #import geoplot
 import matplotlib.pyplot as plt
 from shapely.geometry import Point
-from shapely.geometry import Polyggion
+from shapely.geometry import Polygon
 from shapely.geometry import MultiPoint
 import geopandas as gpd
 import shapefile
@@ -47,8 +47,15 @@ closest_vehicle_on_app_resume = pd.read_sql_query('''SELECT received_at, reserva
                                        FROM ios_production.closest_vehicle_on_app_resume
                                        WHERE user_latitude IS NOT NULL
                                         AND user_latitude IS NOT NULL
-                                       AND DATE_TRUNC('day',received_at) > '2021-02-28'
-                                       AND DATE_TRUNC('day',received_at) < '2021-08-02'
+                                       AND DATE_TRUNC('day',received_at) > '2021-03-12'
+                                       AND DATE_TRUNC('day',received_at) < '2021-03-27'
+                                       ''',cnx)
+reservation_park_mode_enabled = pd.read_sql_query('''SELECT received_at, user_id,  user_longitude, user_latitude
+                                       FROM ios_production.reservation_park_mode_enabled 
+                                       WHERE user_latitude IS NOT NULL
+                                        AND user_latitude IS NOT NULL
+                                       AND DATE_TRUNC('day',received_at) > '2021-03-12'
+                                       AND DATE_TRUNC('day',received_at) < '2021-03-27'
                                        ''',cnx)
 closest_vehicle_on_app_resume_morning = pd.read_sql_query('''SELECT received_at, reservation_created, reservation_tripstarted, user_id,  user_longitude, user_latitude
                                        FROM ios_production.closest_vehicle_on_app_resume
@@ -279,11 +286,11 @@ colormap = colormap.to_step(index=[0, maximum_opening_hexagon* (1/10), maximum_o
                                    , maximum_opening_hexagon* (5/10), maximum_opening_hexagon* (6/10)
                                    , maximum_opening_hexagon* (7/10), maximum_opening_hexagon* (8/10),
                                    maximum_opening_hexagon* (9/10), maximum_opening_hexagon])
-colormap.caption = 'App openings last week per hexagon (service_area)'
+colormap.caption = 'App openings last 2 weeks per hexagon (service_area)'
 colormap.add_to(m)
 folium.Marker(location=[51.920731882528166, 4.470521006248073],popup='Total app openings :' 
               + str(len(closest_vehicle_on_app_resume)),).add_to(m)
-m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\app_openings_last_week.html")
+m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\app_openings_last2_weeks.html")
 #morning app openings
 c1 = 'green'
 c2='red'
@@ -400,11 +407,11 @@ colormap = colormap.to_step(index=[0, maximum_reservation_park_mode_enabled_hexa
                                    , maximum_reservation_park_mode_enabled_hexagon* (5/10), maximum_reservation_park_mode_enabled_hexagon* (6/10)
                                    , maximum_reservation_park_mode_enabled_hexagon* (7/10), maximum_reservation_park_mode_enabled_hexagon* (8/10),
                                    maximum_reservation_park_mode_enabled_hexagon* (9/10), maximum_reservation_park_mode_enabled_hexagon])
-colormap.caption = 'Park mode enabled last week per hexagon (service_area)'
+colormap.caption = 'Park mode enabled last 2 weeks per hexagon (service_area)'
 colormap.add_to(m)
 folium.Marker(location=[51.920731882528166, 4.470521006248073],popup='Total reservations park mode:' 
               + str(len(reservation_park_mode_enabled)),).add_to(m)
-m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\reservation_enabled_last_week.html")
+m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\park_mode_last_2weeks.html")
 
 
 
@@ -435,3 +442,44 @@ for _, r in polygons_used.iterrows():
     folium.Popup(r['default_name']).add_to(geo_j)
     geo_j.add_to(m)
 m.save(r"C:\Users\Martijn Oerlemans\Documents\GitHub\hello-world2\service_area.html")
+
+
+polygons = pd.read_sql_query('''SELECT zipcode, json_build_object(
+    'type',       'Feature',
+    'id',         id,
+    'geometry',   ST_AsGeoJSON(wgs84_polygon)::json,
+    'properties', json_build_object(
+        'feat_type', neighborhood,
+        'zipcode', zipcode
+     )
+ )
+ FROM zip_codes ''',cnx)
+polygons = polygons.dropna().reset_index()
+
+for i in range(0,len(polygons['zipcode'])):
+    if polygons['zipcode'][i] in list(zipcodes):
+        geozips.append(polygons['json_build_object'][i])
+        zipcodes_2.append(polygons['zipcode'][i])
+geo = pd.DataFrame()
+geo['geojson'] = geozips
+geo['zipcode'] = zipcodes_2
+or i in range(0,len(np.array(polygons_used['geojson']))):
+    if polygons_used['zipcode'][i] in list(zipcodes):
+        geozips_new.append(polygons_used['geojson'][i])
+new_json = {}
+new_json['type'] = 'FeatureCollection'
+new_json['features'] = geozips_new
+open("zipcode_borders.json", "w").write(json.dumps(new_json, sort_keys = True, indent = 4))
+geo_new = r'zipcode_borders.json'
+NLMap = folium.Map(location=[52.2130,5.2794], tiles='cartodbpositron', zoom_start=9) #openstreetmap
+NLMap.choropleth(geo_data=geo_new, data = numRidesByZip, columns=["zipcode", "numRides"],
+                colors = 'zipcode',
+                key_on = 'properties.zipcode',
+                fill_opacity = 0.7,
+                line_opacity = 0.2,
+                color_continuous_scale="Viridis",
+                range_color=(0, 12),
+                legend_name="Number of rides per zipcode",
+                fill_color = 'Reds',
+                scope="NL")
+NLMap.save('NLPointMap.html')
