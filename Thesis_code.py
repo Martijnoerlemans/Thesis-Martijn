@@ -26,9 +26,12 @@ import geopandas as gpd
 import contextily as ctx
 from shapely import wkt
 from tqdm import tqdm
+from datetime import datetime
 import rtree
 from shapely.geometry import Polygon
 from shapely.geometry import Point
+from felyx_gcp_utils.read_write_gcp_storage import write_pickle_to_bucket, load_pickle_from_bucket
+
 # %%Determine granularity of service areas
 max_res=15
 list_hex_edge_km = []
@@ -180,26 +183,26 @@ AND a.rent_start_successful
 AND sa_start.id IS NOT NULL
 AND sa_end.id IS NOT NULL
 AND a.start_longitude > 4.7
-LIMIT 1000;''', cnx)
+''', cnx)
 
-full_data_ams = rides
+ full_data_ams = rides
 
-trainstations_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/trainstations_dwh.xlsx')
-trainstations_dwh_ams = trainstations_dwh[trainstations_dwh['location_id']==1]
+# trainstations_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/trainstations_dwh.xlsx')
+# trainstations_dwh_ams = trainstations_dwh[trainstations_dwh['location_id']==1]
 
-uni_hbo_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/uni_hbo_dwh.xlsx')
-uni_hbo_dwh_ams = uni_hbo_dwh[uni_hbo_dwh['location_id']==1]
+# uni_hbo_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/uni_hbo_dwh.xlsx')
+# uni_hbo_dwh_ams = uni_hbo_dwh[uni_hbo_dwh['location_id']==1]
 
-bodemgebruik_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/bodemgebruik_dwh.xlsx')
-bodemgebruik_dwh_ams = bodemgebruik_dwh[bodemgebruik_dwh['location_id']==1]
+# bodemgebruik_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/bodemgebruik_dwh.xlsx')
+# bodemgebruik_dwh_ams = bodemgebruik_dwh[bodemgebruik_dwh['location_id']==1]
 
-cbs_zipcode_2019_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/cbs_zipcode_2019_dwh.xlsx')
+# cbs_zipcode_2019_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/cbs_zipcode_2019_dwh.xlsx')
 
-metro_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/metro_dwh.xlsx')
-metro_ams = metro_dwh[metro_dwh['location_id']==1]
+# metro_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/metro_dwh.xlsx')
+# metro_ams = metro_dwh[metro_dwh['location_id']==1]
 
-kwb_2020 = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/kwb-2020.xls')
-kwb_2020_ams = kwb_2020[kwb_2020['gm_naam']=='Amsterdam']
+# kwb_2020 = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/kwb-2020.xls')
+# kwb_2020_ams = kwb_2020[kwb_2020['gm_naam']=='Amsterdam']
 #loading in environmental data
 #52.290819,4.786194,52.410362,5.038948
 #http://bboxfinder.com/#52.290819,4.786194,52.410362,5.038948
@@ -219,7 +222,7 @@ fp = r'C:\Users\Martijn Oerlemans\Downloads\WijkBuurtkaart_2020_v1\gemeente_2020
 gemeente_2020_v1 = gpd.read_file(fp,bbox=bbox).to_crs(epsg=4326)
 
 fp = r'C:\Users\Martijn Oerlemans\Downloads\bestandbodemgebruik2015\BBG2015.shp'
-BBG2015 = gpd.read_file(fp,bbox=bbox).to_crs(epsg=4326)
+BBG2015 = gpd.read_file(fp,bbox=bbox).to_crs(epsg=4326) 
 BBG2015 = BBG2015.drop(columns = ['Shape_Leng', 'Shape_Area'], axis=1)
 BBG2015.Omschrijvi.unique()
 OmschrijvingToKeep = ['Vliegveld',
@@ -276,8 +279,8 @@ full_data_ams['Polygon'] = gpd.GeoSeries(full_data_ams['Polygon'],crs = 'EPSG:43
 #full_data_ams.to_excel("full_data_ams.xlsx")
 #1832138
 #check what kind of crs
-full_data_ams.crs
-CBS_vk500_2020_v1.crs
+# full_data_ams.crs
+# CBS_vk500_2020_v1.crs
 #convert to geodataframe
 full_data_ams_gdf = gpd.GeoDataFrame(full_data_ams, crs="EPSG:4326",geometry = 'Polygon')
 # full_data_ams_gdf = gpd.GeoDataFrame(full_data_ams, crs="EPSG:4326",geometry = 'centroid_start_hexagon')
@@ -303,7 +306,7 @@ full_data_ams_gdf_groundgroups
 df =df.groups.apply(lambda x: pd.Series([1] * len(x), index=x)).fillna(0, downcast='infer')
 #Concatenate the dummies table to the original table
 full_data_ams_bbg = pd.concat([full_data_ams_gdf, df], axis=1)
-
+data = full_data_ams_bbg
 #delete this big boy table as it is very large
 del BBG2015
 
@@ -315,27 +318,81 @@ full_data_ams_bbg_CBS = gpd.sjoin(full_data_ams_bbg,
                          op="overlaps")
 #convert back to dataframe
 full_data_ams_bbg_CBS =pd.DataFrame(full_data_ams_bbg_CBS)
-a = full_data_ams_bbg_CBS['INWONER'].groupby([full_data_ams_bbg_CBS.index]).apply(list)
-#drop irrelevant columns
-full_data_ams_bbg_CBS = full_data_ams_bbg_CBS.drop(['Polygon','geometry', 'nan','index_right','c28992r500',], 1)
-data =full_data_ams_bbg_CBS.groupby([full_data_ams_bbg_CBS.index]).agg({'sun_hours' : ['first'],
-                            'reservation_start_time' : ['mean'],'service_area_start':'first',
-                            'start_battery_level' : ['mean'],'uv_index':['first'],
-                            'wind_speed':['first'],'precipitation':['first'],
-                            'humidity':['first'],'visibility':['first'],'heat_index':['first'],
-                            })
+def replace(listofnumbers):
+    
+    a = [0 if x<1 else x for x in listofnumbers]
+    return a
 
-data = full_data_ams.groupby(full_data_ams.reservation_start_time.hour)
+columnsused = CBS_vk500_2020_v1.columns
+for i in range(31,len(columnsused)):
+    column_i = columnsused[i]
+    
+    a = full_data_ams_bbg_CBS[column_i].groupby([full_data_ams_bbg_CBS.index]).apply(list)
+    
+    if type(a[0][0]) == float:
+        a = a.apply(lambda x: replace(x))
+        a=a.fillna(0, downcast='infer')
+        df = pd.DataFrame(
+            {column_i: a}, columns=[column_i])
+        df = df[column_i].apply(lambda x: np.mean(x))
+        data = pd.concat([data, df], axis=1)
 
-data =full_data_ams.groupby([pd.Grouper(key='reservation_start_time',freq='3H'),
+
+
+#loop to create text for function
+text = ''
+for i in range(len(data.columns)):
+    if type(data.columns[i]) == str:
+        text = text + ''', \'{}'''.format(data.columns[i]) + '''\' : ['first']'''
+
+data =data.groupby([pd.Grouper(key='reservation_start_time',freq='3H'),
                              'start_hexagon']).agg({'sun_hours' : ['first'],
                             'reservation_start_time' : ['count'],'service_area_start':'first',
                             'start_battery_level' : ['mean'],'uv_index':['first'],
                             'wind_speed':['first'],'precipitation':['first'],
                             'humidity':['first'],'visibility':['first'],'heat_index':['first'],'Polygon':['first']
                             ,}).reset_index()
-data100 = data.head(100)
+data =data.groupby([pd.Grouper(key='reservation_start_time',freq='3H'),
+                             'start_hexagon']).agg({'reservation_start_time' : ['count'],
+                                                    'vehicle_id' : ['first'], 'start_battery_level' : ['mean'], 
+                                                    'service_area_start' : ['first'], 'sun_hours' : ['first'], 'uv_index' : ['first'], 
+                                                    'wind_speed' : ['first'], 'precipitation' : ['first'], 'humidity' : ['first'], 
+                                                    'visibility' : ['first'], 'heat_index' : ['first'], 'hour' : ['first'], 
+                                                    'start_hexagon' : ['first'], 'Polygon' : ['first'], 'geometry' : ['first'], 
+                                                    'Bos' : ['first'], 'Dagrecreatief terrein' : ['first'], 
+                                                    'Detailhandel en horeca' : ['first'], 'Openbare voorziening' : ['first'], 
+                                                    'Park en plantsoen' : ['first'], 'Sociaal-culturele voorziening' : ['first'], 
+                                                    'Sportterrein' : ['first'], 'Volkstuin' : ['first'], 
+                                                    'Water met recreatieve functie' : ['first'], 'INWONER' : ['first'], 
+                                                    'MAN' : ['first'], 'VROUW' : ['first'], 'INW_014' : ['first'], 
+                                                    'INW_1524' : ['first'], 'INW_2544' : ['first'], 'INW_4564' : ['first'], 
+                                                    'INW_65PL' : ['first'], 'P_NL_ACHTG' : ['first'], 'P_WE_MIG_A' : ['first'], 
+                                                    'P_NW_MIG_A' : ['first'], 'AANTAL_HH' : ['first'], 'TOTHH_EENP' : ['first'], 
+                                                    'TOTHH_MPZK' : ['first'], 'HH_EENOUD' : ['first'], 'HH_TWEEOUD' : ['first'], 
+                                                    'GEM_HH_GR' : ['first'], 'WONING' : ['first'], 'WONVOOR45' : ['first'], 
+                                                    'WON_4564' : ['first'], 'WON_6574' : ['first'], 'WON_7584' : ['first'], 
+                                                    'WON_8594' : ['first'], 'WON_9504' : ['first'], 'WON_0514' : ['first'], 
+                                                    'WON_1524' : ['first'], 'WON_MRGEZ' : ['first'], 'P_KOOPWON' : ['first'], 
+                                                    'P_HUURWON' : ['first'], 'WON_HCORP' : ['first'], 'WON_NBEW' : ['first'], 
+                                                    'WOZWONING' : ['first'], 'UITKMINAOW' : ['first'], 'OAD' : ['first'], 
+                                                    'STED' : ['first']}).reset_index()                                               
 
+def Count_Surrounding_Hexagons(hexagon,list_of_hexagons):
+    hexagons_used = list(list_of_hexagons)
+    surrounding_hexagons =list(h3.k_ring(hexagon,1))[1:]
+    count = 0
+    for i in range(0,6):
+        if surrounding_hexagons[i] in hexagons_used:
+            count = count + 1
+    return count
+unique_hexagons = pd.Series(data['start_hexagon']['first'].unique())
+list_surrounding_hexagons = unique_hexagons.apply(lambda x: Count_Surrounding_Hexagons(x,unique_hexagons))
+df = pd.DataFrame(
+    {'unique_hexagons':
+unique_hexagons,'surrounding_hexagons':list_surrounding_hexagons
+    }, columns=['unique_hexagons','surrounding_hexagons'])
+   
+    
 unique_hexagons_ams_start = full_data_ams.start_hexagon.unique()
 unique_hexagons_ams_end = full_data_ams.end_hexagon.unique()
 
@@ -551,4 +608,8 @@ plot_zips(input_graph,'percentage_gehuwd','percentage_gehuwd households per neig
 
 input_graph = cbs_vk500_2020
 
-
+# %%
+# save the resulting dataframe to gcp
+filename = 'forecasting_demand_df_{}'.format(datetime.now().strftime("%d:%m:%Y-%H:%M:%S"))
+folder = 'Real-time forecasting demand/'
+write_pickle_to_bucket(data,'felyx-ai-machine-learning',folder,filename)
