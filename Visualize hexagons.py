@@ -246,6 +246,7 @@ app_opening_count_monday =closest_vehicle_on_app_resume_monday['hexagon'].value_
 maximum_opening_hexagon_monday = max(app_opening_count_monday)
 app_opening_count =closest_vehicle_on_app_resume['hexagon'].value_counts()
 maximum_opening_hexagon = max(app_opening_count)
+maximum_opening_hexagon = 100
 app_opening_count_morning =closest_vehicle_on_app_resume_morning['hexagon'].value_counts()
 maximum_opening_hexagon_morning = max(app_opening_count_morning)
 app_opening_count_noon =closest_vehicle_on_app_resume_noon['hexagon'].value_counts()
@@ -262,24 +263,34 @@ def colorFader(c1,c2,mix): #fade (linear interpolate) from color c1 (at mix=0) t
     return mpl.colors.to_hex((1-mix)*c1 + mix*c2)
 
 #whole wheek app openings
-c1 = 'green'
-c2='red'
+c1 = 'white'
+c2= 'red'
 
 for i in range(len(app_opening_count.unique())):
-    if i == 0:
-        m = visualize_hexagons(app_opening_count.index[app_opening_count 
+    if app_opening_count.unique()[i] > 100:
+        if i == 0:
+            m = visualize_hexagons(app_opening_count.index[app_opening_count 
+                               == app_opening_count.unique()[0]],'purple' 
+                               ,None)
+        else:
+            m = visualize_hexagons(app_opening_count.index[app_opening_count 
+                               == app_opening_count.unique()[i]],
+                                   'purple',m)        
+    else:
+        if i == 0:
+            m = visualize_hexagons(app_opening_count.index[app_opening_count 
                                == app_opening_count.unique()[0]],
                                colorFader(c1,c2,
                                 app_opening_count.unique()[0]/maximum_opening_hexagon) 
                                ,None)
-    else:
-        m = visualize_hexagons(app_opening_count.index[app_opening_count 
+        else:
+            m = visualize_hexagons(app_opening_count.index[app_opening_count 
                                == app_opening_count.unique()[i]],
                                colorFader(c1,c2,
                                 app_opening_count.unique()[i]/maximum_opening_hexagon) 
                                ,m)
 
-colormap = branca.colormap.LinearColormap(colors=['green','red'],vmin=0,vmax=maximum_opening_hexagon)
+colormap = branca.colormap.LinearColormap(colors=['white','red'],vmin=0,vmax=maximum_opening_hexagon)
 
 colormap = colormap.to_step(index=[0, maximum_opening_hexagon* (1/10), maximum_opening_hexagon* (2/10)
                                    , maximum_opening_hexagon* (3/10), maximum_opening_hexagon* (4/10)

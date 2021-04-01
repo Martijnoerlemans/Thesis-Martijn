@@ -30,9 +30,9 @@ from datetime import datetime
 import rtree
 from shapely.geometry import Polygon
 from shapely.geometry import Point
-from felyx_gcp_utils.read_write_gcp_storage import write_pickle_to_bucket, load_pickle_from_bucket
+from felyx_gcp_utils.read_write_gcp_storage import write_pickle_to_bucket, load_pickle_from_bucket, load_csv_from_bucket
 
-# %%Determine granularity of service areas
+# %%Code to determine which hexagon size we want to take (subjective)
 max_res=15
 list_hex_edge_km = []
 list_hex_edge_m = []
@@ -125,15 +125,15 @@ os.environ["GOOGLE_APPLICATION_CREDENTIALS"]="C:/Users/Martijn Oerlemans/Desktop
 cnx = create_engine(access_secret_version('felyx-ai-machine-learning','DATABASE_URL_DATAWAREHOUSE', "latest"))
 
 
-#Data regarding weather, filter out some columns
-weather_record_ams = pd.read_sql_query('''SELECT * 
-                                       FROM weather_record
-                                       WHERE location_id = 1''',cnx)
-#data regarding reservations, add columns needed
-reservation_ams = pd.read_sql_query('''SELECT *
-                                       FROM reservation
-                                       WHERE location_id = 1
-                                       LIMIT 1000;''',cnx)
+# #Data regarding weather, filter out some columns
+# weather_record_ams = pd.read_sql_query('''SELECT * 
+#                                        FROM weather_record
+#                                        WHERE location_id = 1''',cnx)
+# #data regarding reservations, add columns needed
+# reservation_ams = pd.read_sql_query('''SELECT *
+#                                        FROM reservation
+#                                        WHERE location_id = 1
+#                                        LIMIT 1000;''',cnx)
         
 # full_data_ams= pd.read_sql_query('''SELECT a.vehicle_id, a.location_id,
 #                                   a.reservation_start_time, a.reservation_end_time,
@@ -156,7 +156,7 @@ reservation_ams = pd.read_sql_query('''SELECT *
 #                                   AND a.reservation_end_time < '2021-03-04'
 #                                   AND a.start_longitude > 4.7''',cnx)
 
-rides = pd.read_sql_query('''SELECT timezone('Europe/Amsterdam', timezone('UTC', a.rent_start_time)) as rent_start_time,
+full_data_ams = pd.read_sql_query('''SELECT timezone('Europe/Amsterdam', timezone('UTC', a.rent_start_time)) as rent_start_time,
 timezone('Europe/Amsterdam', timezone('UTC', a.reservation_start_time)) as reservation_start_time,
 timezone('Europe/Amsterdam', timezone('UTC', a.reservation_end_time)) as reservation_end_time,
 a.start_latitude,
@@ -183,26 +183,28 @@ AND a.rent_start_successful
 AND sa_start.id IS NOT NULL
 AND sa_end.id IS NOT NULL
 AND a.start_longitude > 4.7
+LIMIT 1000;
 ''', cnx)
 
- full_data_ams = rides
 
-# trainstations_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/trainstations_dwh.xlsx')
-# trainstations_dwh_ams = trainstations_dwh[trainstations_dwh['location_id']==1]
 
-# uni_hbo_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/uni_hbo_dwh.xlsx')
-# uni_hbo_dwh_ams = uni_hbo_dwh[uni_hbo_dwh['location_id']==1]
+trainstations_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/trainstations_dwh.xlsx')
+trainstations_dwh_ams = trainstations_dwh[trainstations_dwh['location_id']==1].reset_index()
+
+uni_hbo_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/uni_hbo_dwh.xlsx')
+uni_hbo_dwh_ams = uni_hbo_dwh[uni_hbo_dwh['location_id']==1].reset_index()
 
 # bodemgebruik_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/bodemgebruik_dwh.xlsx')
 # bodemgebruik_dwh_ams = bodemgebruik_dwh[bodemgebruik_dwh['location_id']==1]
 
 # cbs_zipcode_2019_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/cbs_zipcode_2019_dwh.xlsx')
 
-# metro_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/metro_dwh.xlsx')
-# metro_ams = metro_dwh[metro_dwh['location_id']==1]
+metro_dwh = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/metro_dwh.xlsx')
+metro_dwh_ams = metro_dwh[metro_dwh['location_id']==1].reset_index()
 
 # kwb_2020 = pd.read_excel(r'C:/Users/Martijn Oerlemans/Documents/GitHub/hello-world2/kwb-2020.xls')
 # kwb_2020_ams = kwb_2020[kwb_2020['gm_naam']=='Amsterdam']
+
 #loading in environmental data
 #52.290819,4.786194,52.410362,5.038948
 #http://bboxfinder.com/#52.290819,4.786194,52.410362,5.038948
@@ -233,6 +235,16 @@ OmschrijvingToKeep = ['Vliegveld',
 BBG2015  = BBG2015[BBG2015['Omschrijvi'].isin(OmschrijvingToKeep)]
 
 BBG2015_head = BBG2015.head()
+#covid_data
+covid = load_csv_from_bucket('felyx-ai-machine-learning', 'general/', 'COVID_data/', 'covid_variables.csv',";")
+
+#Data regarding operationality
+operationality = pd.read_sql_query('''SELECT * 
+                                        FROM operationality
+                                        WHERE vehicle_State_id = 16
+                                        AND location_id = 1''',cnx)
+                                        
+
 # %% creating data and appending the dataset
 #full_data_ams = full_data_ams[full_data_ams['location_id_start']==1]
 #resolution wanted
@@ -324,7 +336,7 @@ def replace(listofnumbers):
     return a
 
 columnsused = CBS_vk500_2020_v1.columns
-for i in range(31,len(columnsused)):
+for i in range(len(columnsused)):
     column_i = columnsused[i]
     
     a = full_data_ams_bbg_CBS[column_i].groupby([full_data_ams_bbg_CBS.index]).apply(list)
@@ -338,27 +350,21 @@ for i in range(31,len(columnsused)):
         data = pd.concat([data, df], axis=1)
 
 
-
+tussenstopdata = data
 #loop to create text for function
 text = ''
 for i in range(len(data.columns)):
     if type(data.columns[i]) == str:
         text = text + ''', \'{}'''.format(data.columns[i]) + '''\' : ['first']'''
 
-data =data.groupby([pd.Grouper(key='reservation_start_time',freq='3H'),
-                             'start_hexagon']).agg({'sun_hours' : ['first'],
-                            'reservation_start_time' : ['count'],'service_area_start':'first',
-                            'start_battery_level' : ['mean'],'uv_index':['first'],
-                            'wind_speed':['first'],'precipitation':['first'],
-                            'humidity':['first'],'visibility':['first'],'heat_index':['first'],'Polygon':['first']
-                            ,}).reset_index()
+#group the data by hexagon and reservation start time per 3 hours
 data =data.groupby([pd.Grouper(key='reservation_start_time',freq='3H'),
                              'start_hexagon']).agg({'reservation_start_time' : ['count'],
                                                     'vehicle_id' : ['first'], 'start_battery_level' : ['mean'], 
                                                     'service_area_start' : ['first'], 'sun_hours' : ['first'], 'uv_index' : ['first'], 
                                                     'wind_speed' : ['first'], 'precipitation' : ['first'], 'humidity' : ['first'], 
                                                     'visibility' : ['first'], 'heat_index' : ['first'], 'hour' : ['first'], 
-                                                    'start_hexagon' : ['first'], 'Polygon' : ['first'], 'geometry' : ['first'], 
+                                                    'Polygon' : ['first'], 'geometry' : ['first'], 
                                                     'Bos' : ['first'], 'Dagrecreatief terrein' : ['first'], 
                                                     'Detailhandel en horeca' : ['first'], 'Openbare voorziening' : ['first'], 
                                                     'Park en plantsoen' : ['first'], 'Sociaal-culturele voorziening' : ['first'], 
@@ -375,8 +381,10 @@ data =data.groupby([pd.Grouper(key='reservation_start_time',freq='3H'),
                                                     'WON_1524' : ['first'], 'WON_MRGEZ' : ['first'], 'P_KOOPWON' : ['first'], 
                                                     'P_HUURWON' : ['first'], 'WON_HCORP' : ['first'], 'WON_NBEW' : ['first'], 
                                                     'WOZWONING' : ['first'], 'UITKMINAOW' : ['first'], 'OAD' : ['first'], 
-                                                    'STED' : ['first']}).reset_index()                                               
-
+                                                    'STED' : ['first']}).reset_index()
+#get rid of the multi index                                                    
+data.columns = [col[0] for col in data.columns.values]
+#function to count the amount of surrounding hexagons
 def Count_Surrounding_Hexagons(hexagon,list_of_hexagons):
     hexagons_used = list(list_of_hexagons)
     surrounding_hexagons =list(h3.k_ring(hexagon,1))[1:]
@@ -385,17 +393,17 @@ def Count_Surrounding_Hexagons(hexagon,list_of_hexagons):
         if surrounding_hexagons[i] in hexagons_used:
             count = count + 1
     return count
-unique_hexagons = pd.Series(data['start_hexagon']['first'].unique())
+#create list of each hexagon with the amount of surrounding hexagons
+unique_hexagons = pd.Series(data['start_hexagon'].unique())
 list_surrounding_hexagons = unique_hexagons.apply(lambda x: Count_Surrounding_Hexagons(x,unique_hexagons))
-df = pd.DataFrame(
+hexagon_data = pd.DataFrame(
     {'unique_hexagons':
 unique_hexagons,'surrounding_hexagons':list_surrounding_hexagons
     }, columns=['unique_hexagons','surrounding_hexagons'])
-   
-    
-unique_hexagons_ams_start = full_data_ams.start_hexagon.unique()
-unique_hexagons_ams_end = full_data_ams.end_hexagon.unique()
 
+
+
+#function to calculate distance between two points
 def haversine(coord1, coord2):
     R = 6372800  # Earth radius in meters
     lat1, lon1 = coord1
@@ -409,23 +417,113 @@ def haversine(coord1, coord2):
         math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
     
     return 2*R*math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
+#function to calculate the minimum distance of a point to several points
 def minimum_distance_to_multiple_points(latitudes,longitudes,latitude,longitude):
+    minimum_distance = 100000000
     for i in range(len(latitudes)):
-        minimum_distance = 100000000
+
         distance_i = haversine([latitudes[i],longitudes[i]],[latitude,longitude])
         if  distance_i < minimum_distance:
             minimum_distance = distance_i
             minimum_distance_coordinates = [latitudes[i],longitudes[i]]
     return minimum_distance, minimum_distance_coordinates
 
-full_data_ams['distance_closest_trainstation'] = full_data_ams.apply(lambda row: 
-                                    minimum_distance_to_multiple_points(
-                                        trainstations_dwh_ams['latitude'],trainstations_dwh_ams['longitude']
-                                        ,row['start_latitude'],row['start_longitude'])[0]
-                                    , axis=1)
+Center_Amsterdam = [52.372319, 4.889525]
+#functions to create columns of distances to certain landmark
+hexagon_data['dist_from_center'] = hexagon_data.apply(lambda row: haversine(h3.h3_to_geo(row['unique_hexagons']),Center_Amsterdam),axis=1)
 
-# %% Visualizations
+
+hexagon_data['dist_closest_trainstation'] = hexagon_data.apply(lambda row: minimum_distance_to_multiple_points(
+                                        trainstations_dwh_ams['latitude'],trainstations_dwh_ams['longitude']
+                                        ,h3.h3_to_geo(row['unique_hexagons'])[0],h3.h3_to_geo(row['unique_hexagons'])[1])[0], axis=1)
+hexagon_data['distance_closest_uni_hbo'] = hexagon_data.apply(lambda row: minimum_distance_to_multiple_points(
+                                       uni_hbo_dwh_ams['latitude'],uni_hbo_dwh_ams['longitude']
+                                        ,h3.h3_to_geo(row['unique_hexagons'])[0],h3.h3_to_geo(row['unique_hexagons'])[1])[0], axis=1)
+hexagon_data['distance_closest_metro'] = hexagon_data.apply(lambda row: minimum_distance_to_multiple_points(
+                                       metro_dwh_ams['latitude'],metro_dwh_ams['longitude']
+                                        ,h3.h3_to_geo(row['unique_hexagons'])[0],h3.h3_to_geo(row['unique_hexagons'])[1])[0], axis=1)
+hexagon_data =hexagon_data.rename(columns={'unique_hexagons': 'start_hexagon'})
+#merge hexagon data with data
+data = data.merge(hexagon_data, on='start_hexagon', how='left')
+
+
+
+
+#1_ring hexagon data
+#function to generate data of the 6 surrounding hexagons (if they exist)
+def Data_Surrounding_Hexagons(hexagon,list_of_hexagons):
+    hexagons_used = list(list_of_hexagons)
+    #list of surrounding hexagons
+    surrounding_hexagons =list(h3.k_ring(hexagon,1))[1:]
+    count = 0
+    #initialize
+    surrounding_data_list_1  = pd.DataFrame()
+    surrounding_data_list_2  = pd.DataFrame()
+    surrounding_data_list_3  = pd.DataFrame()
+    a = pd.Series()
+    b = pd.Series()
+    c = pd.Series()
+    #loop over the hexagons
+    for i in range(0,6):
+        if surrounding_hexagons[i] in hexagons_used:
+            #if count == 0 initialize dataframe otherwise append dataframe
+            if count == 0:
+                surrounding_data_list = data[data.start_hexagon == surrounding_hexagons[i]].drop(data[data.start_hexagon == surrounding_hexagons[i]].index[1:])
+                surrounding_data_list_1 = surrounding_data_list[data.columns[16:25]]
+                surrounding_data_list_2 = surrounding_data_list[data.columns[25:61]]
+                surrounding_data_list_3 = surrounding_data_list[data.columns[61:]]
+            else:             
+                surrounding_data_list_1 = pd.concat([surrounding_data_list_1, 
+                                                     data[data.start_hexagon == 
+                                                    surrounding_hexagons[i]].drop(data[data.start_hexagon == 
+                                                    surrounding_hexagons[i]].index[1:])[data.columns[16:25]]])
+                surrounding_data_list_2 = pd.concat([surrounding_data_list_2, 
+                                                     data[data.start_hexagon == 
+                                                    surrounding_hexagons[i]].drop(data[data.start_hexagon == 
+                                                    surrounding_hexagons[i]].index[1:])[data.columns[25:61]]])
+                surrounding_data_list_3 = pd.concat([surrounding_data_list_3, 
+                                                     data[data.start_hexagon == 
+                                                    surrounding_hexagons[i]].drop(data[data.start_hexagon == 
+                                                    surrounding_hexagons[i]].index[1:])[data.columns[61:]]])
+            count = count + 1
+    #here we take the max, min or mean of the data of the surrounding hexagons depending on the surrounding hexagons
+    if not surrounding_data_list_1.empty:
+        a = surrounding_data_list_1.max()
+    if not surrounding_data_list_2.empty:
+        b = surrounding_data_list_2.mean()
+    if not surrounding_data_list_3.empty:
+        c = surrounding_data_list_3.min()
+    #concatenate lists
+    a = pd.Series([hexagon], index=['start_hexagon']).append(a.append(b.append(c)))
+    return pd.DataFrame(a).transpose()
+
+#create the neighbouring hexagon data for all hexagons in the data set
+data_neighbouring_hexagons = pd.DataFrame()
+unique_hexagons = pd.Series(data['start_hexagon'].unique())
+for i in range(len(unique_hexagons)):
+    data_neighbouring_hexagons = data_neighbouring_hexagons.append(Data_Surrounding_Hexagons(unique_hexagons[i],unique_hexagons))
+#give a new column name that differentiates the columns of the neighbouring hexagon data of the hexagon data
+data_neighbouring_hexagons.columns = [col + '_neigh_hex' for col in data_neighbouring_hexagons.columns]
+data_neighbouring_hexagons =data_neighbouring_hexagons.rename(columns={'start_hexagon_neigh_hex': 'start_hexagon'})
+#merge the data
+data = data.merge(data_neighbouring_hexagons, on='start_hexagon', how='left')
+
+# %%add fleetsize data (STILL to do)
+#first sum over datapoints at the same timestamp
+fleetsize =operationality.groupby(['calculated_at']).agg({'count' : ['sum']}).reset_index()
+fleetsize.columns = [col[0] for col in fleetsize.columns.values]
+#then group by day as it differs throughout the day
+fleetsize_day = fleetsize.groupby([pd.Grouper(key='calculated_at',freq='d')]).agg({'count' : ['mean']})
+fleetsize_day.columns = [col[0] for col in fleetsize_day.columns.values]
+
+
+covid = covid.drop([covid.columns[0],covid.columns[3],covid.columns[4]],1)
+covid['Date'] = covid.apply(lambda row: datetime.strptime(row['Date'], '%d/%m/%Y %H:%M:%S'),axis=1)
+covid['Date'][0].strftime('%d/%m/%Y %H:%M:%S')
+aaa = data.merge(covid, on='start_hexagon', how='left')
+
+
+# %% Visualizations NO NEED TO BE CHECKED
 random_hexagon ='89196953157ffff'
 # function to get boundaries of a hexagon in latitudes and longitudes
 h3.h3_to_geo_boundary(random_hexagon)
